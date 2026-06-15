@@ -63,17 +63,26 @@ button:hover{background:#8a8a8a}
 #languageSelect{font-size:22px;padding:8px 14px;background:#444;color:white;border:3px solid #222}
 #gameScreen{position:fixed;inset:0;z-index:10;background:#000}
 #gameFrame{width:100%;height:100%;border:0;display:block;background:#000}
-#gameBackBtn{
+#gameBackBtn{display:none!important}
+#gameBackBtn:hover{display:none!important}
+
+#roomCorner{
   position:fixed;
   top:10px;
   right:10px;
-  z-index:50;
-  width:120px;
-  height:38px;
+  z-index:60;
+  display:none;
+  color:white;
+  background:rgba(0,0,0,.55);
+  border:3px solid #111;
+  padding:8px 12px;
   font-size:18px;
-  opacity:.75;
+  text-shadow:2px 2px 0 #000;
+  font-family:'Courier New',monospace;
 }
-#gameBackBtn:hover{opacity:1}
+#roomStatus{font-size:16px;color:#ddd;line-height:1.6;margin:12px 0;white-space:pre-line}
+.roomIdBox{font-size:36px;color:#ffff66;text-shadow:3px 3px 0 #000;margin:18px 0}
+#joinRoomInput{height:54px;font-size:28px;text-align:center;background:#222;color:white;border:4px solid #111;width:100%;letter-spacing:4px}
 
 .worldList{
   display:flex;
@@ -248,6 +257,10 @@ button:hover{background:#8a8a8a}
   margin-top:10px;
 }
 .titleSkinSmall{font-size:12px;color:#333;line-height:1.45;margin-top:9px;text-shadow:none}
+
+.titleSkinArrowRow{display:flex;gap:8px;margin:8px 0}
+.titleSkinArrowRow .titleSkinArrow{flex:1}
+
 #titleSkinFileInput{display:none}
 
 </style>
@@ -260,6 +273,7 @@ button:hover{background:#8a8a8a}
 
   <div class="menu">
     <button id="playBtn" onclick="openWorldScreen()">プレイ</button>
+    <button id="multiplayerBtn" onclick="openMultiplayerScreen()">マルチプレイ</button>
     <button id="settingsBtn" onclick="settings()">設定</button>
     <div class="small">
       <button id="quitBtn" onclick="quitGame()">終了</button>
@@ -275,10 +289,13 @@ button:hover{background:#8a8a8a}
       <div class="titleSkinPreviewBox"><canvas id="titleSkinPreview" width="104" height="150"></canvas></div>
       <div class="titleSkinInfo">
         <div id="titleSkinName">スティーブ</div>
-        <button class="titleSkinArrow" onclick="switchTitleDefaultSkin()">→</button>
+        <div class="titleSkinArrowRow">
+          <button class="titleSkinArrow" onclick="switchTitleDefaultSkin(-1)">←</button>
+          <button class="titleSkinArrow" onclick="switchTitleDefaultSkin(1)">→</button>
+        </div>
         <label class="titleSkinFileLabel" for="titleSkinFileInput">PNGを選択</label>
         <input id="titleSkinFileInput" type="file" accept="image/png" onchange="loadTitleCustomSkinFile(event)">
-        <div class="titleSkinSmall">帽子・上着・袖・ズボンなどの浮き出たレイヤーも反映。読み込み後は完成したスキンを表示。</div>
+        <div class="titleSkinSmall">帽子・上着・袖・ズボンなどの浮き出たレイヤーも反映。← →でスキン切替。エンダーマン追加済み。</div>
       </div>
     </div>
   </div>
@@ -323,6 +340,54 @@ button:hover{background:#8a8a8a}
   </div>
 </div>
 
+<div id="multiplayerScreen" class="screen" style="display:none">
+  <div class="panel">
+    <h1>マルチプレイ</h1>
+    <p>部屋を作るか、友達の部屋IDを検索します。</p>
+    <div class="menu">
+      <button onclick="createOnlineRoom()">部屋を作る</button>
+      <button onclick="openSearchRoomScreen()">部屋を検索</button>
+      <button onclick="backTitleFromMultiplayer()">戻る</button>
+    </div>
+  </div>
+</div>
+
+<div id="createRoomScreen" class="screen" style="display:none">
+  <div class="panel">
+    <h1>部屋</h1>
+    <p>このIDを別の端末で入力してください。</p>
+    <div id="createdRoomId" class="roomIdBox">----</div>
+    <div id="hostRoomStatus" class="emptyWorldText">接続準備中...</div>
+    <div class="menu">
+      <button onclick="cancelOnlineRoom()">戻る</button>
+    </div>
+  </div>
+</div>
+
+<div id="searchRoomScreen" class="screen" style="display:none">
+  <div class="panel">
+    <h1>部屋を検索</h1>
+    <p>作った側の画面に出ているIDを入力します。</p>
+    <input id="joinRoomInput" maxlength="6" placeholder="ID">
+    <div id="joinRoomStatus" class="emptyWorldText"></div>
+    <div class="menu" style="margin-top:14px">
+      <button onclick="searchOnlineRoom()">検索</button>
+      <button onclick="openMultiplayerScreen()">戻る</button>
+    </div>
+  </div>
+</div>
+
+<div id="foundRoomScreen" class="screen" style="display:none">
+  <div class="panel">
+    <h1>部屋が見つかりました</h1>
+    <p id="foundRoomText">ワールドに入れます。</p>
+    <div class="menu">
+      <button onclick="requestEnterOnlineWorld()">ワールドに入る</button>
+      <button onclick="openSearchRoomScreen()">戻る</button>
+    </div>
+  </div>
+</div>
+
 <div id="settingsScreen" class="screen">
   <div class="titleSettingsLayout">
     <div class="titleSettingsSide">
@@ -353,6 +418,7 @@ button:hover{background:#8a8a8a}
 <div id="gameScreen">
   <iframe id="gameFrame" allow="fullscreen; pointer-lock"></iframe>
   <button id="gameBackBtn" onclick="backToTitleFromGame()">タイトルへ</button>
+  <div id="roomCorner"></div>
 </div>
 
 <textarea id="gameSource" style="display:none"><!DOCTYPE html>
@@ -669,6 +735,33 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Co
   font-family:'Courier New',monospace;
   image-rendering:pixelated;
 }
+
+.invBox{position:relative}
+#touchInventoryClose{
+  position:absolute;
+  right:10px;
+  top:8px;
+  z-index:130;
+  display:none;
+  width:46px;
+  height:42px;
+  line-height:34px;
+  font-size:28px;
+  color:white;
+  background:#6f6f6f;
+  border:3px solid #111;
+  box-shadow:inset 3px 3px #aaa,inset -3px -3px #333;
+  text-shadow:2px 2px #000;
+}
+#wrap.touchMode #inventoryScreen.show #touchInventoryClose{display:block}
+.skinArrowRow,.titleSkinArrowRow{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin:8px 0 8px;
+}
+.skinArrowRow .skinArrow,.titleSkinArrowRow .titleSkinArrow{flex:1}
+
 .invTabs{display:none}
 .invTab{display:none}
 .invTab.active{display:none}
@@ -896,16 +989,20 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Co
       <div class="skinPreviewBox"><canvas id="skinPreview" width="104" height="150"></canvas></div>
       <div class="skinInfo">
         <div id="skinName">スティーブ</div>
-        <button class="skinArrow" onclick="switchDefaultSkin()">→</button>
+        <div class="skinArrowRow">
+          <button class="skinArrow" onclick="switchDefaultSkin(-1)">←</button>
+          <button class="skinArrow" onclick="switchDefaultSkin(1)">→</button>
+        </div>
         <label class="skinFileLabel" for="skinFileInput">PNGを選択</label>
         <input id="skinFileInput" type="file" accept="image/png" onchange="loadCustomSkinFile(event)">
-        <div class="skinSmall">PNGスキンを読み込み対応。スティーブの隣の→でアレックスに切替。</div>
+        <div class="skinSmall">PNGスキンを読み込み対応。← →でスティーブ・アレックス・サニー・カイ・エンダーマンを切替。</div>
       </div>
     </div>
   </div>
 
   <div id="inventoryScreen">
     <div class="invBox">
+      <button id="touchInventoryClose" type="button" onclick="toggleInventory(false)">×</button>
       <div class="invTitle">インベントリ</div>
       <div id="creativeGrid" class="invGrid"></div>
       <div class="invHotTitle">ホットバー <span id="heldItemName">選択中: なし</span></div>
@@ -991,10 +1088,13 @@ const OAK_PLANKS_BREAK_SOUND_URL = "https://github.com/yushin880/CraftBlock/rele
 const ATTACK_SOUND_URL = "https://github.com/yushin880/CraftBlock/releases/download/v1.0/hit.mp3";
 const STEVE_SKIN_DATA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAYAAACinX6EAAAE6ElEQVRogeWX30/bVhTH/UjtxCVVp0Z2MKVJjQNBDoU9JFEXKOVHp6rViJhaPJUKJkhDEVIEm9QKBVYEpJO6PUUKSjOpUqUIberD2u2hYo97yv/03cPNNdfGjilFDaOWvnLie3zj7+fec3zCcR5HT4cfPR1+RIJtYD9Hgm3obBewOq43ldf8p/6ghvXO89A7z1sARIJtWB3XkRuKYyszaJ63MoNnCwA1r0q8K4BwOGxRbih+NgDQ1benAb125gGwZlWJhyrxlnT4LAA4mfcCMKmpZwcANR4N+aBKPDrbhUMAnHRmAFDjrOjO+N+/BjWZhyYTU92ygGjIh2vhdvRdJtIv+9GrkDqghQREgm1QJR69CgFA466F2xEN+dAtC1AlMqcm8/DqI1rt3wJAlXjEFBHRkA+9ih8DkQB6Fb+pgUgAN3ouIN3zBWKKCC0kmDHRkA8xRTTnYQE06yNa7Z+LKSLUIFk1YlyEJguIBHkTxF/Fx9h/kce/pXXs/5zH/osV/P7DNAavXkA05EMkyEOTBfQ24KkSDzUoIKaI8OojWu2f7ADJj74OkayqTFIhpojQrwSwtzaPt5tL2Fubxx/rS6jkv8P7Yh6VR7dReXQb+pUAYoqIblmAJpMd1NchQpP80GQeXn1Eq/2bKUDSwIfwpXPYvpdEZW4USe0i3m4uAQAmrxfx7ukC3hfzmLxeBADsrc0jqV1EZW4U2/eSCF86B1XygZ3Tq49otf8DAJK/sW0D2JzsR2lmGDvTCVTmxvDn01n8/VPefL39s/MYr3LjWM8MYmc6gdLMMDYn+xFTAlCDgrn6bBF06yNa7Z+j276vQ8TsiI6XubvYnbtp/qH59cEISjND+PHGlxb98uArbGQSWB3XsZUZxO7cTbzM3cXsiE5SoJEOXn1Eq/1z9N8bNV1ZmEBpZhjP76ewMqFjeTSGpZEebGQS2Mgk8OTOAJ5NpfBsKoUndwawMqHj+f0UfsveQmVhArvff03OjfkoSHsfQcG12v+h49tbdbDSNM0izwnqdfemqF4H9/Bhc3kdtRqZp14HV6shNxTHN/1XzfOpAODWGp8IAGq+oc8bQK1mMZ8bip8OAJ8yBT4aQFzLI67loXYZiGt5jCVfW8SO2ceT/UVwhcKBDANcuQyuWsVGJoFXuXGzeHLVKhEbXyiQa7Xagd68IaLf3eJpjH2c3k91FABql3EsAGPJ1+RHs1miQuHgwRsQTPP0gdj4bNZqmhWdh42lBuk9FKh9/DgA3Ax6AnB6QPqQ1SrZEaxJNj6bdTbPzuEEmI1pOQDDOHgAw7D+OAXAXnOLp3G1mvWz3SC7mz7VDmBjkv1Fi0wjVOWy1TT9TK+zsRSA3TRzf2lm2NT2VAp7a/MWbU+lLDH28WMBoObYHeAKgDWTzVoBOBljgdEUcLqnsdWdAJSWDdMgvX6iAD64BtgBsKvPVmwWAFsDbKZZIKw5O4DSsuEIoLRsmDFHAsDqo98CXgDsbwGnWBcA9hW2A3BKkRMB0Gy8aRGyvwHsAJyKlk2sOTcAzWqEJ4B0Oo10Ou0JgMYtLi5aZBqijQhdPfvquwFg4x3qAWvOKcdZAGwK0PORAbgZ9BpnU0TtMg4BNDtGBoC98TILKk2Tctkswm4AqEmnHdIyAE47yAKhXPZurctlyzX7ClsK4LLhWCM+BMB/aG3tAxSVGg8AAAAASUVORK5CYII=";
 const ALEX_SKIN_DATA = "data:image/png;base64,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";
+const SUNNY_SKIN_DATA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAACDFJREFUeF7tWn1sFEUUf0et/bzrJy1coR9HEyoINUShIEiERBvRpH9ICgJGgRoTESLBqLRAgAIxVgKIgIIfGBAaNGIEbUrEYA2xLTEBKZakFFrpQVva0h5tKaSseXO8dXZub/fu9sqVtvPP3u6bnX3v937vzbuZMYFOs9lsktlshrCwMNYzJiYG2traoLu7GxwOB2ydPVxzhJy95Sa9bwRSrqtcVlaWhEZjI8OtVqt8//4EaWADkJmZySxEBpDXExIS2G9s6yeHDmwAhhjgAQNizKHQ5ritYAI9GxQ5AI1lOeI+CPz9Qw8A5gBxBiBXYx7AHJCREg+NrbcUDEiMjYTquhvw0APAT4M4G9jtdkVC/CpnNKCxag1Bmbn1lO5ME9BpkDxM8zsqg55Frzc1NQHVAPRMDQSaFdRqBX4GwelTBLC2tjagAJlomhOVQ8Wx0CEACCA1ALCPaCjVDO6e09hnz54NLAA8xUXP89TkASKW8HI0iGcC1QzYBwHiwSQZPg84ALmzJsmlnCkoWLap4lKzi+IUEtSJjMLr5DH/l8RS711FWPf0KO9JGBISDMUn/wosA9bOnyEDsOo5G9PN3nADvq3qgAPlDfDz4sdgbP4xMJlMUF04h8kzCo6DJElwcdOL8MKX/8DCKUnwyngLWJPimbyotNbjvLbhUFlgAShaME0G4KnEYJbRcfqq6QqC9PBemDUtQ9OYk6er4ffGe/BM4jB5OqxsdPW4o6tHMY45PITdrzp4OrAAnFo5UxILGHFaI89uOnCKKZ2/cKbMFN4qqgXE8WqVJYL8ii0SAj5Nmo7mTVH9O0fVHGqLgBAIpD2GCV/8iKWwpzEQ6ELJhX7PrjwhmcMfZfo7uu5AcssBaGxsZPeJiYmwf/9+Tcqu3jtJOv7nGihO26fAYGN3OaSkJsP3vy7XxObi4dc0x1+2dYzU1tIOMXFRgNfd6c68hA65n5+8CildAEIufKxQuKSkRPMDC/LjpfPX98KOqG2K/wZHRl1lCp+5VAQOh3pMmM2RoAcAAtzhaAeLOQrwujlmOjMe8xY2bxmlC4C3DEAPlVUVuQDweVgV89qJijWGAHjgDEAA+OZNCFCOwByyM7yaec1oCPidAZlLfpBud7ZDaESUZmxSn9ioSOBzhDVsPtzquAuRlmB2HZ0WD8iAOVkb4dXGkWzMbxKvQd2Vejlu+f74HsUzf8UxHh+RByYpHG62OCA6zsyuqWNjWShRX1EeFR+kGG/nykuaIWsiAOJG2qCzo4UpjEZia213xmqEJQ5artXKIPHyGeNXKRRiCan7ECAwmPQwTnmF1YyleOavmEhx7Hs9odDhcIDFbGbX5LR4Nib1FeXR8cGyDPtsztOuNF0AED1stzcAgkMAoHzEcCdbrje3M0NFBlRd3QPjR73JDCcQSGF81m8ZgEZarUkKiosAoOEpI2PladJy92WX0HnrpSPw6U9z2XOkODY1z6uBgeBg6wj+DnDs3jvDNENTT3jsszbPQ4AAIA9fqGnQDAFGd7uzD98onyBbCCCK9X8vO6crdw0Np4YhOPqRxXo2aso9BoBPgmIOwC/wSZByA/bD32ISFcME+3yUGyGzorp5u6w0fjc7vRUqmpPZM0qw+BsLsd2x2+Q5Hpfe1BrVAGryjILj2gwYO+9r7Z0NHfzRAASAkigZ39np3DcgQwgovKd38Ir9Jw+vh5KaWDm0+HfKph+VqzyxHMd+fBGEAIh9LK9rV66mvgAAvRgR4dxKw0RJXq271sqe8bMKAoBhhGBgbkGvExPw948TlHWI6A8qgZEFPgFQXTjHhQGEIg3OfxRl9Bx/z/gjx4UBalTm41qcVpFBYvKl/p4CQP29ZgAPgBrFiGbuIiH38lIFANiPZgliAYYDetNdXUEA0Dd4xmAIuGtqDsK+vB26IZCdne3CAPzXh43+BYoK8PLL0fOYmOKaflMi5T2Phop9mcLc1MuHDoZG5fO/qdovxj6FgBgKugCUlpa6AJCc7MzI9fX1qh/n5e8Wd6qGAL7IzxbuQkCcMbAfX2hphQCBgLFPhnvNALf8GiQCrxYPBiImQwAMRK96Y9MQA7xBayD2HWJAf/fqG1vSFHVKii1BoXJdbZPiXpTn52of0+v3DFi4OlkBAC55hZuDmNFdjl64eUO5DSfKddcE+zsD+lo/09LCoy6lsDnSuSjquOVmA4OT7yvIMcyi97Z8IX34wRLD4/gClmlBwWEXAMJCnae+um8rj77RB3j5wcJ5hhXf8MkRae3bcw2P4xMAvrzk73cGPQAr1u2Utq9fNngZ4G9GeTNeQFD3RsG+7ut3AIyeLxB3f8eFvwMNDQ2QlJTEsMjPz/erzn4dDBUUAfD2fIG4+9tc/iQzPC4uDqZOnQqLFi3yq85+HUwNAF/OF/CbqQ89A3w5X8Dv/vZ7Bhg9X5AUuqRP9//1kqjhEDB6vuDp9II+3f9/4AB4e75gQDHAk/MFPEC4V2h0+9uaGq25HqC3XuDXEKBTJOPSnXM2bozi5oi4GUoa+2P/H88O8c3b9QK/AeDr+YIVjgKXMD3Ukap4hjUAtpYW5xkmavMtV7w+Fyh+zPB6QNn5m3p5RlM+O7YCllvrWJ8d9hRmJBpMlZ+7l7E6xL7FxcWGnGh4PeBMjfqagaeoPCH9wgwmD5PxuP+otTeJMgRh165dxgDwVFF3/YyeL8grUQcQgSDKiyHAywwzwJ8A+HK+YN3fzuW3iRMnsiv/x0dPt37BAKPnC2w2mxz3vMcfWA7QQ1lPbvR8QWVlJZw7d44xAK98AuTPIajlBH8w4D8Lsk4bk2jFIAAAAABJRU5ErkJggg==";
+const KAI_SKIN_DATA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAw1BMVEUAAAAHBQ8LCBURCR0YCxokESYoEyssHU0uHlIxIVczYUhAIyNCHBxIHClIIyNLKSlPLS1nLUNrRGprRmpsFS5zHzd2a496Ly96MUyKOleONzeRYJCSg7OULEqUaD6ZcUijZKGjcUOobTaqZzCtgVWweUazeki0cjy1h1m4bom9gEjChk7Cj1/EiFHEjVrHk1/HuuPMjlTOiE7WnGnZnGToum3rv87ww5nyztryz4j204331Xb74or77ZH89Kr/8PX////LjmVRAAAAAXRSTlMAQObYZgAAA0BJREFUWMPllmt3mkAQhvECQhJj2hoNQpNqbCAGmyjECu5u8/9/VWf2goAQMJ70S9/DYS9n59mZhd0dTZMilO4o2ZFZFBEaRTOtWpSW94I5MGarFaGr1fEAQuiOUEJmQAD7D3iAAVBCGwDKhf4LD4SOBsDksITowccBGAGFr4D6AACtQU8C8HSEoTIV77SyE6/6xcPgldnrq6jxLvFkx7Kyz5mgGOOT/gpDRhnjXQml34eUJhlzlkdQ/mhJHEcRAwJYg6DGoiiOgXDN2HWS1IYQx/HSg2nZ21kYnr0hyltCZ5yAVyyJK9zfhxDH08WSsPA3dyCkjJLlYooEDCoWAMKyceQBt9Pb6SLixg8PAKAkWkDXrR/jIsZ+YdZDwJTrZygdoLtI9PirFYVd6VfbZzaVBboCqbZBuAxLKu0HhWEQHKyGZZnm5cXFpWrrxLu/99Y6dKMKgPm8HrB+D1DqQT4E3Vh73trQy0MoeCCGmDafCoSDdMMDQcEFe5wYBzoAWDnAyPNGAqAbznD4Q8GMro6qAFgK0DVcz3Oh4ICvlDqG7nB9k3KcGoDlupYAdAWgK8f1zB485n5dBACN8wCsCQD4Sw29K8dJgFkAZCQAOEwCuoZD4d0rqBIgQoQ5eo4K17IgePflxXXdkZTrpoBRQb0KBVJzEJYpYLvd/gFtlfr9L6hHG16i3u9j+YyC3xABfhg+ZwCTyWQ8hpcAyAltu+CB3K4KEKaAzWQDZuPtFipQ28Ay9HrwWW9MLPeS9v7d/G7uBxkA7oGr8/MrJTneviksrvIAAUHWg6rTnmj/nexT1+M9wHB4IoAf35XnQVPASfq3ABEi1px9uBD85/0A8jzQ1Hkgux/tU38s+zgntHTqBp/1k9Vutdrqsm21Wx11qQZB/SEiAO1OG+8YvO6hngLm88aA9h7Q6rSO96AjABhCB2I42gPME27M/FVXmhe8A4BLdA/AdKCbmut6LcAqANSGKJ4Hql0LUPmAajX0wCwAZNtsAiioMi9oClD5gMoPagHFfEHlA0plW7GQIeTbHAD5gMwP/AZ7O58vSICSX26j7Y8ini+MN2m+ALf5nZ8SgnoPVL4wGGBlMEBAxoODNfgL6R3LHWtp+BgAAAAASUVORK5CYII=";
+const ENDERMAN_SKIN_DATA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAEdklEQVR4Xu1bQY7UQAzM7CNAe+KCBOIRq5V4N5d9BAKJC6cV3EDiukMSxZFTU2V3phtlgrLSip2Z7o5dLpe73cOpy3/ONuTd2/fd129f5hn2evh3+Bk+s79tUP/eKX/EdiNKjBsB8I4ZCB4ADwwAVvKMzRAoMe7sI48sMHAw+vb6v2AAo7oPGWOHA6YE5H0wwOe6irzL/TFtds+A3olZBDFMTPTImP0zgFUBTAvvuAdm9wzoHZMMiBLXpcttM2CguC9rGEmf6yh8TPnVeF9KoWRuCtDJAECBYyqPQGHtJ5ugcRmWLm7u9gCgchMlZzu82bGoJOIewq89/X07ADCV9wLI0gM/BwGcgVPp0s/fFgATOUXfHx9/dp/7QR/634fvD6O/T2+e5vdef3q1oHmkAV4HHBO2ByDK/0gLsuhnAnpTKYCnvME4JXpsR2jj1YkRxfBmRDBLAdSF7DU7LOEcGLN5CqB9i+Pv7z+/Fp8/Pz9nBl8cnz2bMgAzUbStuTtt4pKZfYvxbPB4/LWfawBQmlLCjpeXl+7u7k46gWcT0oe4HQBYtFnjxI/LALCUDZjUBgAz9P7+fnUKlFYV4UTmwKJBQ9bI5l+kwOKwo5obUe5muz0PSLS+6jb5Z6vWW6AzISDzWUDVe2ZwSalT61k5ZAZnGqGAjkp2JqoDOhddX+W0PQh3jeYsU2Y8CGFD1eYiS6IttYGoxnh7UgD8aTDq9rLND9s8IRgsOtmYyDEFMjjtzyB5CqjJSsV9VBEEb2CJNqicVj0KlevB7jQGYEgBNRkpH5UwRWHWN2RpoFKFaYZiI64x2b8eAP9QZAfmX0neM+1QO7moEqgACMfN9OtTQJ3hUQQjw1ADgr7AaDBjAmMXqzKYspNd5QCoSLGoM33A90rKpdo0KadRV1AwScrkKeBLEVtQAcCM8WuhYEXGe/CYAGZsRBa6Z+UMyBR3bZSYcDHKRmLIgGSpx2yDfQwF4Hw+P3an09iPKzq+4uYoAoWVRsUMLKlMBEtZhUyeXnMAuu5x+GDVwaEk7/c25gBgbxFrbe/BgNaI7m29gwF7i1hrew8GtEZ0b+sdDNhbxFrbezCgNaJ7W+9gwN4i1tregwGtER0uWnwrbO3lqr+owZZa1OC41o/mDDAAzPhrAGD9QfdeU5ubLjYYWQuAteiCiDa1uelik9Fzj3HoDa5lgAEQ9Aab2txisYsvU2MDNctP1WCdGLWYTi5hqnyommwRv6ZjzC5NWO4rJjjQqnyomuxzPrrMUNfoeJNswokXKPh+Sd8/Y519/k8AwIvPqPev0gXvCD0IUB6rfKiajKqPqKsbJxV5nI83QaI8VvlQNRk1YO39nYkcY4yPMl6UGhAlt79ZKjQBIFNrdtPb4kpsAqnKh6rJpVVAUfma7wog2P0aVT5UTfYAlFxpg3jJL0Nkt8awb6jyoWoyA8BHKPr6jM9/nEOifPE/T1xprfKhanImgiBWCyeU4mNaYPkjlaDKh6rJbCNkBrIvM6xhB2OFd770GyBZFfgLQQ50/CLT37sAAAAASUVORK5CYII=";
 let STEVE_SKIN_IMG = null;
-let CURRENT_SKIN_DATA = STEVE_SKIN_DATA;
-let CURRENT_SKIN_NAME = "スティーブ";
-let CURRENT_SKIN_SLIM = false;
+let CURRENT_SKIN_DATA = (()=>{try{return localStorage.getItem("craftblock_skin_data") || STEVE_SKIN_DATA;}catch(e){return STEVE_SKIN_DATA;}})();
+let CURRENT_SKIN_NAME = (()=>{try{return localStorage.getItem("craftblock_skin_name") || "スティーブ";}catch(e){return "スティーブ";}})();
+let CURRENT_SKIN_SLIM = (()=>{try{return localStorage.getItem("craftblock_skin_slim") === "true";}catch(e){return false;}})();
 
 
 document.getElementById("hand").src = HAND_URL;
@@ -2183,6 +2283,9 @@ window.addEventListener("message", e=>{
   if(msg.craftblock==="setTouchMode"){
     setTouchModeEnabled(!!msg.enabled);
   }
+  if(msg.craftblock==="setSkin"){
+    applySkinData(msg.data || STEVE_SKIN_DATA, msg.name || "スティーブ", !!msg.slim);
+  }
 });
 
 function setEditedBlock(x,y,z,type,axis="y",part="single",open=false){
@@ -2992,6 +3095,11 @@ async function applySkinData(data,name,slim){
   CURRENT_SKIN_DATA=data;
   CURRENT_SKIN_NAME=name;
   CURRENT_SKIN_SLIM=!!slim;
+  try{
+    localStorage.setItem("craftblock_skin_data",data);
+    localStorage.setItem("craftblock_skin_name",name);
+    localStorage.setItem("craftblock_skin_slim",String(!!slim));
+  }catch(e){}
   STEVE_SKIN_IMG = await loadImage(data);
   updateSkinPreview();
   if(playerModel){
@@ -3002,12 +3110,20 @@ async function applySkinData(data,name,slim){
   }
 }
 
-function switchDefaultSkin(){
-  if(CURRENT_SKIN_NAME==="アレックス"){
-    applySkinData(STEVE_SKIN_DATA,"スティーブ",false);
-  }else{
-    applySkinData(ALEX_SKIN_DATA,"アレックス",true);
-  }
+const DEFAULT_SKIN_LIST=[
+  {name:"スティーブ", data:STEVE_SKIN_DATA, slim:false},
+  {name:"アレックス", data:ALEX_SKIN_DATA, slim:true},
+  {name:"サニー", data:SUNNY_SKIN_DATA, slim:false},
+  {name:"カイ", data:KAI_SKIN_DATA, slim:false},
+  {name:"エンダーマン", data:ENDERMAN_SKIN_DATA, slim:false}
+];
+
+function switchDefaultSkin(step=1){
+  let index=DEFAULT_SKIN_LIST.findIndex(s=>s.name===CURRENT_SKIN_NAME);
+  if(index<0) index=0;
+  index=(index+step+DEFAULT_SKIN_LIST.length)%DEFAULT_SKIN_LIST.length;
+  const skin=DEFAULT_SKIN_LIST[index];
+  applySkinData(skin.data,skin.name,skin.slim);
 }
 
 function loadCustomSkinFile(e){
@@ -3699,6 +3815,10 @@ function setTouchModeEnabled(on){
   wrapEl.classList.toggle("touchMode", touchModeEnabled);
   if(touchToggleCheck) touchToggleCheck.checked=touchModeEnabled;
   Object.keys(touchKeys).forEach(k=>touchKeys[k]=false);
+  if(typeof touchKeyPointers!=="undefined"){
+    Object.keys(touchKeyPointers).forEach(k=>touchKeyPointers[k].clear());
+  }
+  document.querySelectorAll(".touchBtn.down").forEach(b=>b.classList.remove("down"));
   Object.keys(keys).forEach(k=>keys[k]=false);
   if(touchModeEnabled && document.pointerLockElement===canvas3d){
     document.exitPointerLock();
@@ -4113,24 +4233,43 @@ function runTouchBlockAction(button){
   }
 }
 
+const touchKeyPointers={};
+
 function bindTouchHold(id,key){
   const el=document.getElementById(id);
   if(!el) return;
+  if(!touchKeyPointers[key]) touchKeyPointers[key]=new Set();
+
+  const update=()=>{
+    touchKeys[key]=touchKeyPointers[key].size>0;
+    el.classList.toggle("down",touchKeys[key]);
+  };
+
   const down=e=>{
     if(!touchModeEnabled) return;
     e.preventDefault();
-    touchKeys[key]=true;
-    el.classList.add("down");
+    e.stopPropagation();
+    touchKeyPointers[key].add(e.pointerId);
+    try{el.setPointerCapture(e.pointerId);}catch(err){}
+    update();
   };
+
   const up=e=>{
-    if(e) e.preventDefault();
-    touchKeys[key]=false;
-    el.classList.remove("down");
+    if(e){
+      e.preventDefault();
+      e.stopPropagation();
+      touchKeyPointers[key].delete(e.pointerId);
+      try{el.releasePointerCapture(e.pointerId);}catch(err){}
+    }else{
+      touchKeyPointers[key].clear();
+    }
+    update();
   };
+
   el.addEventListener("pointerdown",down);
   el.addEventListener("pointerup",up);
   el.addEventListener("pointercancel",up);
-  el.addEventListener("pointerleave",up);
+  el.addEventListener("lostpointercapture",up);
 }
 
 function setupTouchControls(){
@@ -4151,6 +4290,7 @@ function setupTouchControls(){
   tap("touchBreak",()=>runTouchBlockAction(0));
   tap("touchPlace",()=>runTouchBlockAction(2));
   tap("touchInv",()=>{ if(!touchModeEnabled) return; if(!pauseOpen) toggleInventory(); });
+  tap("touchInventoryClose",()=>{ if(!touchModeEnabled) return; toggleInventory(false); });
   tap("touchPause",()=>{ if(!touchModeEnabled) return; if(pauseOpen) closePauseMenu(); else openPauseMenu(); });
   tap("touchView",()=>{
     if(!touchModeEnabled) return;
@@ -4431,6 +4571,9 @@ const GAME_BGM_URL = "https://github.com/yushin880/CraftBlock/releases/download/
 
 const TITLE_STEVE_SKIN_DATA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAYAAACinX6EAAAE6ElEQVRogeWX30/bVhTH/UjtxCVVp0Z2MKVJjQNBDoU9JFEXKOVHp6rViJhaPJUKJkhDEVIEm9QKBVYEpJO6PUUKSjOpUqUIberD2u2hYo97yv/03cPNNdfGjilFDaOWvnLie3zj7+fec3zCcR5HT4cfPR1+RIJtYD9Hgm3obBewOq43ldf8p/6ghvXO89A7z1sARIJtWB3XkRuKYyszaJ63MoNnCwA1r0q8K4BwOGxRbih+NgDQ1benAb125gGwZlWJhyrxlnT4LAA4mfcCMKmpZwcANR4N+aBKPDrbhUMAnHRmAFDjrOjO+N+/BjWZhyYTU92ygGjIh2vhdvRdJtIv+9GrkDqghQREgm1QJR69CgFA466F2xEN+dAtC1AlMqcm8/DqI1rt3wJAlXjEFBHRkA+9ih8DkQB6Fb+pgUgAN3ouIN3zBWKKCC0kmDHRkA8xRTTnYQE06yNa7Z+LKSLUIFk1YlyEJguIBHkTxF/Fx9h/kce/pXXs/5zH/osV/P7DNAavXkA05EMkyEOTBfQ24KkSDzUoIKaI8OojWu2f7ADJj74OkayqTFIhpojQrwSwtzaPt5tL2Fubxx/rS6jkv8P7Yh6VR7dReXQb+pUAYoqIblmAJpMd1NchQpP80GQeXn1Eq/2bKUDSwIfwpXPYvpdEZW4USe0i3m4uAQAmrxfx7ukC3hfzmLxeBADsrc0jqV1EZW4U2/eSCF86B1XygZ3Tq49otf8DAJK/sW0D2JzsR2lmGDvTCVTmxvDn01n8/VPefL39s/MYr3LjWM8MYmc6gdLMMDYn+xFTAlCDgrn6bBF06yNa7Z+j276vQ8TsiI6XubvYnbtp/qH59cEISjND+PHGlxb98uArbGQSWB3XsZUZxO7cTbzM3cXsiE5SoJEOXn1Eq/1z9N8bNV1ZmEBpZhjP76ewMqFjeTSGpZEebGQS2Mgk8OTOAJ5NpfBsKoUndwawMqHj+f0UfsveQmVhArvff03OjfkoSHsfQcG12v+h49tbdbDSNM0izwnqdfemqF4H9/Bhc3kdtRqZp14HV6shNxTHN/1XzfOpAODWGp8IAGq+oc8bQK1mMZ8bip8OAJ8yBT4aQFzLI67loXYZiGt5jCVfW8SO2ceT/UVwhcKBDANcuQyuWsVGJoFXuXGzeHLVKhEbXyiQa7Xagd68IaLf3eJpjH2c3k91FABql3EsAGPJ1+RHs1miQuHgwRsQTPP0gdj4bNZqmhWdh42lBuk9FKh9/DgA3Ax6AnB6QPqQ1SrZEaxJNj6bdTbPzuEEmI1pOQDDOHgAw7D+OAXAXnOLp3G1mvWz3SC7mz7VDmBjkv1Fi0wjVOWy1TT9TK+zsRSA3TRzf2lm2NT2VAp7a/MWbU+lLDH28WMBoObYHeAKgDWTzVoBOBljgdEUcLqnsdWdAJSWDdMgvX6iAD64BtgBsKvPVmwWAFsDbKZZIKw5O4DSsuEIoLRsmDFHAsDqo98CXgDsbwGnWBcA9hW2A3BKkRMB0Gy8aRGyvwHsAJyKlk2sOTcAzWqEJ4B0Oo10Ou0JgMYtLi5aZBqijQhdPfvquwFg4x3qAWvOKcdZAGwK0PORAbgZ9BpnU0TtMg4BNDtGBoC98TILKk2Tctkswm4AqEmnHdIyAE47yAKhXPZurctlyzX7ClsK4LLhWCM+BMB/aG3tAxSVGg8AAAAASUVORK5CYII=";
 const TITLE_ALEX_SKIN_DATA = "data:image/png;base64,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";
+const TITLE_SUNNY_SKIN_DATA = "data:image/png;base64,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";
+const TITLE_KAI_SKIN_DATA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAw1BMVEUAAAAHBQ8LCBURCR0YCxokESYoEyssHU0uHlIxIVczYUhAIyNCHBxIHClIIyNLKSlPLS1nLUNrRGprRmpsFS5zHzd2a496Ly96MUyKOleONzeRYJCSg7OULEqUaD6ZcUijZKGjcUOobTaqZzCtgVWweUazeki0cjy1h1m4bom9gEjChk7Cj1/EiFHEjVrHk1/HuuPMjlTOiE7WnGnZnGToum3rv87ww5nyztryz4j204331Xb74or77ZH89Kr/8PX////LjmVRAAAAAXRSTlMAQObYZgAAA0BJREFUWMPllmt3mkAQhvECQhJj2hoNQpNqbCAGmyjECu5u8/9/VWf2goAQMJ70S9/DYS9n59mZhd0dTZMilO4o2ZFZFBEaRTOtWpSW94I5MGarFaGr1fEAQuiOUEJmQAD7D3iAAVBCGwDKhf4LD4SOBsDksITowccBGAGFr4D6AACtQU8C8HSEoTIV77SyE6/6xcPgldnrq6jxLvFkx7Kyz5mgGOOT/gpDRhnjXQml34eUJhlzlkdQ/mhJHEcRAwJYg6DGoiiOgXDN2HWS1IYQx/HSg2nZ21kYnr0hyltCZ5yAVyyJK9zfhxDH08WSsPA3dyCkjJLlYooEDCoWAMKyceQBt9Pb6SLixg8PAKAkWkDXrR/jIsZ+YdZDwJTrZygdoLtI9PirFYVd6VfbZzaVBboCqbZBuAxLKu0HhWEQHKyGZZnm5cXFpWrrxLu/99Y6dKMKgPm8HrB+D1DqQT4E3Vh73trQy0MoeCCGmDafCoSDdMMDQcEFe5wYBzoAWDnAyPNGAqAbznD4Q8GMro6qAFgK0DVcz3Oh4ICvlDqG7nB9k3KcGoDlupYAdAWgK8f1zB485n5dBACN8wCsCQD4Sw29K8dJgFkAZCQAOEwCuoZD4d0rqBIgQoQ5eo4K17IgePflxXXdkZTrpoBRQb0KBVJzEJYpYLvd/gFtlfr9L6hHG16i3u9j+YyC3xABfhg+ZwCTyWQ8hpcAyAltu+CB3K4KEKaAzWQDZuPtFipQ28Ay9HrwWW9MLPeS9v7d/G7uBxkA7oGr8/MrJTneviksrvIAAUHWg6rTnmj/nexT1+M9wHB4IoAf35XnQVPASfq3ABEi1px9uBD85/0A8jzQ1Hkgux/tU38s+zgntHTqBp/1k9Vutdrqsm21Wx11qQZB/SEiAO1OG+8YvO6hngLm88aA9h7Q6rSO96AjABhCB2I42gPME27M/FVXmhe8A4BLdA/AdKCbmut6LcAqANSGKJ4Hql0LUPmAajX0wCwAZNtsAiioMi9oClD5gMoPagHFfEHlA0plW7GQIeTbHAD5gMwP/AZ7O58vSICSX26j7Y8ini+MN2m+ALf5nZ8SgnoPVL4wGGBlMEBAxoODNfgL6R3LHWtp+BgAAAAASUVORK5CYII=";
+const TITLE_ENDERMAN_SKIN_DATA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAEdklEQVR4Xu1bQY7UQAzM7CNAe+KCBOIRq5V4N5d9BAKJC6cV3EDiukMSxZFTU2V3phtlgrLSip2Z7o5dLpe73cOpy3/ONuTd2/fd129f5hn2evh3+Bk+s79tUP/eKX/EdiNKjBsB8I4ZCB4ADwwAVvKMzRAoMe7sI48sMHAw+vb6v2AAo7oPGWOHA6YE5H0wwOe6irzL/TFtds+A3olZBDFMTPTImP0zgFUBTAvvuAdm9wzoHZMMiBLXpcttM2CguC9rGEmf6yh8TPnVeF9KoWRuCtDJAECBYyqPQGHtJ5ugcRmWLm7u9gCgchMlZzu82bGoJOIewq89/X07ADCV9wLI0gM/BwGcgVPp0s/fFgATOUXfHx9/dp/7QR/634fvD6O/T2+e5vdef3q1oHmkAV4HHBO2ByDK/0gLsuhnAnpTKYCnvME4JXpsR2jj1YkRxfBmRDBLAdSF7DU7LOEcGLN5CqB9i+Pv7z+/Fp8/Pz9nBl8cnz2bMgAzUbStuTtt4pKZfYvxbPB4/LWfawBQmlLCjpeXl+7u7k46gWcT0oe4HQBYtFnjxI/LALCUDZjUBgAz9P7+fnUKlFYV4UTmwKJBQ9bI5l+kwOKwo5obUe5muz0PSLS+6jb5Z6vWW6AzISDzWUDVe2ZwSalT61k5ZAZnGqGAjkp2JqoDOhddX+W0PQh3jeYsU2Y8CGFD1eYiS6IttYGoxnh7UgD8aTDq9rLND9s8IRgsOtmYyDEFMjjtzyB5CqjJSsV9VBEEb2CJNqicVj0KlevB7jQGYEgBNRkpH5UwRWHWN2RpoFKFaYZiI64x2b8eAP9QZAfmX0neM+1QO7moEqgACMfN9OtTQJ3hUQQjw1ADgr7AaDBjAmMXqzKYspNd5QCoSLGoM33A90rKpdo0KadRV1AwScrkKeBLEVtQAcCM8WuhYEXGe/CYAGZsRBa6Z+UMyBR3bZSYcDHKRmLIgGSpx2yDfQwF4Hw+P3an09iPKzq+4uYoAoWVRsUMLKlMBEtZhUyeXnMAuu5x+GDVwaEk7/c25gBgbxFrbe/BgNaI7m29gwF7i1hrew8GtEZ0b+sdDNhbxFrbezCgNaJ7W+9gwN4i1tregwGtER0uWnwrbO3lqr+owZZa1OC41o/mDDAAzPhrAGD9QfdeU5ubLjYYWQuAteiCiDa1uelik9Fzj3HoDa5lgAEQ9Aab2txisYsvU2MDNctP1WCdGLWYTi5hqnyommwRv6ZjzC5NWO4rJjjQqnyomuxzPrrMUNfoeJNswokXKPh+Sd8/Y519/k8AwIvPqPev0gXvCD0IUB6rfKiajKqPqKsbJxV5nI83QaI8VvlQNRk1YO39nYkcY4yPMl6UGhAlt79ZKjQBIFNrdtPb4kpsAqnKh6rJpVVAUfma7wog2P0aVT5UTfYAlFxpg3jJL0Nkt8awb6jyoWoyA8BHKPr6jM9/nEOifPE/T1xprfKhanImgiBWCyeU4mNaYPkjlaDKh6rJbCNkBrIvM6xhB2OFd770GyBZFfgLQQ50/CLT37sAAAAASUVORK5CYII=";
 let TITLE_CURRENT_SKIN_DATA = localStorage.getItem("craftblock_skin_data") || TITLE_STEVE_SKIN_DATA;
 let TITLE_CURRENT_SKIN_NAME = localStorage.getItem("craftblock_skin_name") || "スティーブ";
 let TITLE_CURRENT_SKIN_SLIM = localStorage.getItem("craftblock_skin_slim") === "true";
@@ -4531,9 +4674,20 @@ function toggleTitleSkinPanel(force){
   if(show) drawTitleSkinPreview(TITLE_CURRENT_SKIN_IMG);
 }
 
-function switchTitleDefaultSkin(){
-  if(TITLE_CURRENT_SKIN_NAME==="アレックス") applyTitleSkin(TITLE_STEVE_SKIN_DATA,"スティーブ",false);
-  else applyTitleSkin(TITLE_ALEX_SKIN_DATA,"アレックス",true);
+const TITLE_DEFAULT_SKIN_LIST=[
+  {name:"スティーブ", data:TITLE_STEVE_SKIN_DATA, slim:false},
+  {name:"アレックス", data:TITLE_ALEX_SKIN_DATA, slim:true},
+  {name:"サニー", data:TITLE_SUNNY_SKIN_DATA, slim:false},
+  {name:"カイ", data:TITLE_KAI_SKIN_DATA, slim:false},
+  {name:"エンダーマン", data:TITLE_ENDERMAN_SKIN_DATA, slim:false}
+];
+
+function switchTitleDefaultSkin(step=1){
+  let index=TITLE_DEFAULT_SKIN_LIST.findIndex(s=>s.name===TITLE_CURRENT_SKIN_NAME);
+  if(index<0) index=0;
+  index=(index+step+TITLE_DEFAULT_SKIN_LIST.length)%TITLE_DEFAULT_SKIN_LIST.length;
+  const skin=TITLE_DEFAULT_SKIN_LIST[index];
+  applyTitleSkin(skin.data,skin.name,skin.slim);
 }
 
 function loadTitleCustomSkinFile(e){
@@ -4625,6 +4779,162 @@ setInterval(()=>{
   splashText.textContent = splashTexts[splashIndex];
 },7000);
 
+
+function hideAllOuterScreens(){
+  [titleScreen,worldScreen,settingsScreen,createWorldScreen,multiplayerScreen,createRoomScreen,searchRoomScreen,foundRoomScreen,gameScreen].forEach(el=>{ if(el) el.style.display="none"; });
+}
+
+let onlinePeer=null;
+let onlineConn=null;
+let onlineRoomId="";
+let onlineMode="";
+let onlineWorldData=null;
+
+function makeRoomCode(){
+  const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let id="";
+  for(let i=0;i<6;i++) id+=chars[Math.floor(Math.random()*chars.length)];
+  return id;
+}
+function setRoomCorner(text){
+  const el=document.getElementById("roomCorner");
+  if(!el) return;
+  el.style.display=text?"block":"none";
+  el.textContent=text||"";
+}
+function loadPeerJsThen(cb){
+  if(window.Peer){ cb(); return; }
+  const old=document.getElementById("peerjsScript");
+  if(old){ old.addEventListener("load",cb,{once:true}); return; }
+  const sc=document.createElement("script");
+  sc.id="peerjsScript";
+  sc.src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js";
+  sc.onload=cb;
+  sc.onerror=()=>alert("オンライン用の読み込みに失敗しました。ネット接続を確認してください。");
+  document.head.appendChild(sc);
+}
+function closeOnlinePeer(){
+  try{ if(onlineConn) onlineConn.close(); }catch(e){}
+  try{ if(onlinePeer) onlinePeer.destroy(); }catch(e){}
+  onlinePeer=null; onlineConn=null; onlineRoomId=""; onlineMode=""; onlineWorldData=null;
+  setRoomCorner("");
+}
+function openMultiplayerScreen(){
+  hideAllOuterScreens();
+  multiplayerScreen.style.display="block";
+}
+function backTitleFromMultiplayer(){
+  closeOnlinePeer();
+  hideAllOuterScreens();
+  titleScreen.style.display="block";
+}
+function openSearchRoomScreen(){
+  closeOnlinePeer();
+  hideAllOuterScreens();
+  searchRoomScreen.style.display="block";
+  joinRoomStatus.textContent="";
+  joinRoomInput.value="";
+  setTimeout(()=>joinRoomInput.focus(),50);
+}
+function createOnlineRoom(){
+  closeOnlinePeer();
+  onlineMode="host";
+  onlineRoomId=makeRoomCode();
+  hideAllOuterScreens();
+  createRoomScreen.style.display="block";
+  createdRoomId.textContent=onlineRoomId;
+  hostRoomStatus.textContent="オンライン準備中...";
+  setRoomCorner("部屋ID: "+onlineRoomId);
+  loadPeerJsThen(()=>{
+    onlinePeer=new Peer("craftblock-"+onlineRoomId,{debug:0});
+    onlinePeer.on("open",()=>{ hostRoomStatus.textContent="部屋を作りました。別の端末でIDを入力してください。"; });
+    onlinePeer.on("connection",conn=>{
+      onlineConn=conn;
+      hostRoomStatus.textContent="相手が部屋に入りました。相手が『ワールドに入る』を押すまで待っています。";
+      conn.on("data",data=>{
+        if(!data || !data.type) return;
+        if(data.type==="hello"){
+          conn.send({type:"roomFound",roomId:onlineRoomId});
+        }
+        if(data.type==="enterWorld"){
+          hostRoomStatus.textContent="相手がワールドに入りました。開始します。";
+          onlineWorldData={worldType:"normal",timeMode:"normal",timeCycle:0,blocks:null,createdOnline:true};
+          onlineWorldData.skinData=TITLE_CURRENT_SKIN_DATA;
+          onlineWorldData.skinName=TITLE_CURRENT_SKIN_NAME;
+          onlineWorldData.skinSlim=TITLE_CURRENT_SKIN_SLIM;
+          conn.send({type:"launchWorld",worldData:onlineWorldData,roomId:onlineRoomId});
+          launchMultiplayerWorld(onlineWorldData,onlineRoomId,true);
+        }
+      });
+      conn.on("close",()=>{ hostRoomStatus.textContent="相手の接続が切れました。"; });
+    });
+    onlinePeer.on("error",err=>{ hostRoomStatus.textContent="部屋エラー: "+(err && err.type ? err.type : "不明"); });
+  });
+}
+function cancelOnlineRoom(){
+  closeOnlinePeer();
+  openMultiplayerScreen();
+}
+function searchOnlineRoom(){
+  const id=(joinRoomInput.value||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if(id.length<3){ joinRoomStatus.textContent="IDを入れてください。"; return; }
+  closeOnlinePeer();
+  onlineMode="guest";
+  onlineRoomId=id;
+  joinRoomStatus.textContent="検索中...";
+  loadPeerJsThen(()=>{
+    onlinePeer=new Peer(undefined,{debug:0});
+    onlinePeer.on("open",()=>{
+      onlineConn=onlinePeer.connect("craftblock-"+id,{reliable:true});
+      onlineConn.on("open",()=>{ onlineConn.send({type:"hello"}); });
+      onlineConn.on("data",data=>{
+        if(!data || !data.type) return;
+        if(data.type==="roomFound"){
+          hideAllOuterScreens();
+          foundRoomScreen.style.display="block";
+          foundRoomText.textContent="部屋ID: "+id+" が見つかりました。";
+          setRoomCorner("部屋ID: "+id);
+        }
+        if(data.type==="launchWorld"){
+          launchMultiplayerWorld(data.worldData||{worldType:"normal",timeMode:"normal"},data.roomId||id,false);
+        }
+      });
+      onlineConn.on("close",()=>{ joinRoomStatus.textContent="接続が切れました。"; });
+      onlineConn.on("error",()=>{ joinRoomStatus.textContent="部屋が見つかりません。IDを確認してください。"; });
+      setTimeout(()=>{
+        if(searchRoomScreen.style.display!=="none" && joinRoomStatus.textContent==="検索中...") joinRoomStatus.textContent="見つからない時は、作った側の画面を開いたままにしてください。";
+      },4500);
+    });
+    onlinePeer.on("error",err=>{ joinRoomStatus.textContent="検索エラー: "+(err && err.type ? err.type : "不明"); });
+  });
+}
+function requestEnterOnlineWorld(){
+  if(onlineConn && onlineConn.open){
+    foundRoomText.textContent="作った側に参加を送信中...";
+    onlineConn.send({type:"enterWorld"});
+  }else{
+    foundRoomText.textContent="接続が切れました。もう一回検索してください。";
+  }
+}
+function launchMultiplayerWorld(worldData,roomId,isHost){
+  currentWorldId = "online_"+roomId;
+  pendingWorldData = Object.assign({worldType:"normal",timeMode:"normal",timeCycle:0}, worldData || {});
+  pendingWorldData.onlineRoomId=roomId;
+  pendingWorldData.onlineHost=!!isHost;
+  hideAllOuterScreens();
+  gameScreen.style.display="block";
+  setRoomCorner("部屋ID: "+roomId);
+  if(!gameLoaded){
+    gameFrame.srcdoc = gameSource.value;
+    gameLoaded = true;
+  }else{
+    gameFrame.contentWindow?.postMessage({craftblock:"loadWorld",data:pendingWorldData}, "*");
+    gameFrame.contentWindow?.postMessage({craftblock:"setTouchMode", enabled:localStorage.getItem("craftblock_touch_mode")==="1"}, "*");
+    gameFrame.contentWindow?.postMessage({craftblock:"setSkin",data:pendingWorldData.skinData || localStorage.getItem("craftblock_skin_data"),name:pendingWorldData.skinName || localStorage.getItem("craftblock_skin_name"),slim:!!pendingWorldData.skinSlim}, "*");
+  }
+  setTimeout(()=>gameFrame.focus(),100);
+}
+
 const texts = {
   ja:{
     play:"プレイ",
@@ -4657,6 +4967,7 @@ const texts = {
 function setLanguage(lang){
   const t = texts[lang];
   playBtn.textContent = t.play;
+  if(typeof multiplayerBtn!=="undefined" && multiplayerBtn) multiplayerBtn.textContent = "マルチプレイ";
   if(typeof settingsBtn!=="undefined" && settingsBtn) settingsBtn.textContent = t.settings;
   quitBtn.textContent = t.quit;
   worldTitle.textContent = t.worldTitle;
@@ -4667,7 +4978,7 @@ function setLanguage(lang){
   fullscreenText.textContent = t.fullscreen;
   if(typeof languageText!=="undefined" && languageText) languageText.textContent = t.lang;
   settingsBackBtn.textContent = t.back;
-  gameBackBtn.textContent = t.gameBack;
+  if(typeof gameBackBtn!=="undefined" && gameBackBtn) gameBackBtn.textContent = t.gameBack;
 }
 
 if(typeof languageSelect!=="undefined" && languageSelect){
@@ -4804,10 +5115,7 @@ function launchWorld(world){
   pendingWorldData.skinName = TITLE_CURRENT_SKIN_NAME;
   pendingWorldData.skinSlim = TITLE_CURRENT_SKIN_SLIM;
 
-  titleScreen.style.display = "none";
-  worldScreen.style.display = "none";
-  settingsScreen.style.display = "none";
-  createWorldScreen.style.display = "none";
+  hideAllOuterScreens();
   gameScreen.style.display = "block";
 
   if(!gameLoaded){
@@ -4819,6 +5127,12 @@ function launchWorld(world){
       data:pendingWorldData
     }, "*");
     gameFrame.contentWindow?.postMessage({craftblock:"setTouchMode", enabled:localStorage.getItem("craftblock_touch_mode")==="1"}, "*");
+    gameFrame.contentWindow?.postMessage({
+      craftblock:"setSkin",
+      data:localStorage.getItem("craftblock_skin_data"),
+      name:localStorage.getItem("craftblock_skin_name"),
+      slim:localStorage.getItem("craftblock_skin_slim")==="true"
+    }, "*");
   }
 
   setTimeout(()=>{
@@ -4859,11 +5173,9 @@ function showTitleAfterGame(){
   if(gameLoaded && gameFrame.contentWindow){
     gameFrame.contentWindow.postMessage({craftblock:"resetMenus"}, "*");
   }
-  gameScreen.style.display = "none";
+  hideAllOuterScreens();
   titleScreen.style.display = "block";
-  worldScreen.style.display = "none";
-  settingsScreen.style.display = "none";
-  createWorldScreen.style.display = "none";
+  setRoomCorner(onlineRoomId ? "部屋ID: "+onlineRoomId : "");
   renderWorldList();
 }
 
@@ -4871,29 +5183,22 @@ function openWorldScreen(){
   renderWorldList();
   updateCreateWorldTypeButton();
   updateCreateTimeModeButton();
-  titleScreen.style.display = "none";
-  settingsScreen.style.display = "none";
-  createWorldScreen.style.display = "none";
+  hideAllOuterScreens();
   worldScreen.style.display = "block";
 }
 
 function backTitle(){
-  worldScreen.style.display = "none";
-  settingsScreen.style.display = "none";
-  createWorldScreen.style.display = "none";
+  hideAllOuterScreens();
   titleScreen.style.display = "block";
 }
 
 function settings(){
-  titleScreen.style.display = "none";
-  worldScreen.style.display = "none";
-  createWorldScreen.style.display = "none";
+  hideAllOuterScreens();
   settingsScreen.style.display = "block";
 }
 
 function closeSettings(){
-  settingsScreen.style.display = "none";
-  createWorldScreen.style.display = "none";
+  hideAllOuterScreens();
   titleScreen.style.display = "block";
 }
 
@@ -4902,9 +5207,7 @@ function openCreateWorldSettings(){
   selectedCreateTimeMode = "normal";
   updateCreateWorldTypeButton();
   updateCreateTimeModeButton();
-  titleScreen.style.display = "none";
-  worldScreen.style.display = "none";
-  settingsScreen.style.display = "none";
+  hideAllOuterScreens();
   createWorldScreen.style.display = "block";
 }
 
@@ -4944,6 +5247,13 @@ window.addEventListener("message", e=>{
     gameFrame.contentWindow?.postMessage({
       craftblock:"loadWorld",
       data:pendingWorldData
+    }, "*");
+    gameFrame.contentWindow?.postMessage({craftblock:"setTouchMode", enabled:localStorage.getItem("craftblock_touch_mode")==="1"}, "*");
+    gameFrame.contentWindow?.postMessage({
+      craftblock:"setSkin",
+      data:localStorage.getItem("craftblock_skin_data"),
+      name:localStorage.getItem("craftblock_skin_name"),
+      slim:localStorage.getItem("craftblock_skin_slim")==="true"
     }, "*");
   }
 
