@@ -263,6 +263,18 @@ button:hover{background:#8a8a8a}
 
 #titleSkinFileInput{display:none}
 
+
+/* プレイ中は部屋IDを出さない */
+#gameScreen #roomCorner{display:none!important}
+/* スマホモード: タッチUIを小さめにする */
+#wrap.phoneUiMode #touchMovePad{transform:scale(.6)!important;transform-origin:left bottom!important}
+#wrap.phoneUiMode #touchSideBtns{transform:scale(.6);transform-origin:left bottom}
+#wrap.phoneUiMode #touchActionBtns{transform:scale(.6);transform-origin:right bottom}
+#wrap.phoneUiMode #touchFlyBtns{transform:scale(.6);transform-origin:right bottom}
+#wrap.phoneUiMode #touchTopBtns{transform:scale(.6);transform-origin:right top}
+#wrap.phoneUiMode #hotbar{transform:translateX(-50%) scale(.75);transform-origin:center bottom}
+#wrap.phoneUiMode #hud{font-size:8px}
+
 </style>
 </head>
 <body>
@@ -408,6 +420,14 @@ button:hover{background:#8a8a8a}
         <label class="titleSettingRow">
           <span id="homeTouchText">タッチ操作</span>
           <input id="homeTouchToggleCheck" type="checkbox">
+        </label>
+        <label class="titleSettingRow">
+          <span>スマホモード</span>
+          <input id="homePhoneToggleCheck" type="checkbox">
+        </label>
+        <label class="titleSettingRow" style="display:block;text-align:left">
+          <span>名前</span>
+          <input id="playerNameInput" maxlength="16" style="width:100%;height:46px;margin-top:10px;font-size:22px;background:#222;color:white;border:3px solid #111;padding:0 10px" placeholder="プレイヤー">
         </label>
       </div>
       <button id="settingsBackBtn" class="titleSettingsBack" onclick="closeSettings()">戻る</button>
@@ -1046,6 +1066,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Co
           <label class="settingRow">
             <span>タッチ操作</span>
             <input id="touchToggleCheck" type="checkbox" onchange="setTouchModeEnabled(this.checked)">
+          </label>
+          <label class="settingRow">
+            <span>スマホモード</span>
+            <input id="phoneToggleCheck" type="checkbox" onchange="setPhoneUiModeEnabled(this.checked)">
+          </label>
+          <label class="settingRow" style="display:block">
+            <span>名前</span>
+            <input id="gamePlayerNameInput" maxlength="16" style="width:100%;height:44px;margin-top:10px;font-size:21px;background:#222;color:white;border:3px solid #111;padding:0 10px" onchange="setPlayerDisplayName(this.value)" oninput="setPlayerDisplayName(this.value)">
           </label>
         </div>
         <div id="settingsPageVideo" class="settingsPage">
@@ -2103,6 +2131,8 @@ function exportWorldData(){
     flying:flying,
     sprinting:sprinting,
     worldType:worldType,
+    worldSeedX:worldSeedX,
+    worldSeedZ:worldSeedZ,
     timeMode:timeMode,
     timeCycle:timeCycle,
     skinData:CURRENT_SKIN_DATA,
@@ -2182,6 +2212,12 @@ function importWorldData(data){
   editedBlocks.clear();
 
   worldType = data && data.worldType === "flat" ? "flat" : "normal";
+  worldSeedX = Number.isFinite(Number(data && data.worldSeedX)) ? Number(data.worldSeedX) : Math.floor(Math.random()*100000);
+  worldSeedZ = Number.isFinite(Number(data && data.worldSeedZ)) ? Number(data.worldSeedZ) : Math.floor(Math.random()*100000);
+  onlineEnabled = !!(data && data.onlineRoomId);
+  onlineHost = !!(data && data.onlineHost);
+  onlineRoomId = data && data.onlineRoomId ? String(data.onlineRoomId) : "";
+  localPlayerName = (data && data.playerName) || localStorage.getItem("craftblock_player_name") || "プレイヤー";
   timeMode = data && data.timeMode === "always_day" ? "always_day" : "normal";
   timeCycle = data && Number.isFinite(Number(data.timeCycle)) ? Number(data.timeCycle) : 0;
   updateWorldTime(0);
@@ -2243,6 +2279,8 @@ function importWorldData(data){
   flying=!!(data && data.flying);
   sprinting=!!(data && data.sprinting);
   updateStatus();
+  setPhoneUiModeEnabled(!!(data && data.phoneUiMode));
+  const nameInput=document.getElementById("gamePlayerNameInput"); if(nameInput) nameInput.value=localPlayerName;
   cameraReady=false;
   updateCameraForView();
   updatePlayerModel();
@@ -2286,16 +2324,27 @@ window.addEventListener("message", e=>{
   if(msg.craftblock==="setSkin"){
     applySkinData(msg.data || STEVE_SKIN_DATA, msg.name || "スティーブ", !!msg.slim);
   }
+  if(msg.craftblock==="setPhoneUiMode"){
+    setPhoneUiModeEnabled(!!msg.enabled);
+  }
+  if(msg.craftblock==="setPlayerName"){
+    setPlayerDisplayName(msg.name || "プレイヤー");
+  }
+  if(msg.craftblock==="onlineSync"){
+    handleOnlinePayload(msg.payload);
+  }
 });
 
-function setEditedBlock(x,y,z,type,axis="y",part="single",open=false){
+function setEditedBlock(x,y,z,type,axis="y",part="single",open=false,silent=false){
   editedBlocks.set(blockKey(x,y,z),makeBlockRecord(type,axis,part,open));
   needRebuild=true;
+  if(!silent) sendOnlinePayload({kind:"block",action:"set",x,y,z,type,axis,part,open});
 }
 
-function removeEditedBlock(x,y,z){
+function removeEditedBlock(x,y,z,silent=false){
   editedBlocks.set(blockKey(x,y,z),0);
   needRebuild=true;
+  if(!silent) sendOnlinePayload({kind:"block",action:"remove",x,y,z});
 }
 
 function removeDoorBothParts(x,y,z){
@@ -2314,7 +2363,7 @@ function removeDoorBothParts(x,y,z){
   }
 }
 
-function toggleDoorOpen(x,y,z){
+function toggleDoorOpen(x,y,z,silent=false){
   const rec=editedBlocks.get(blockKey(x,y,z));
   if(getRecordType(rec)!==OAK_DOOR_TYPE) return false;
 
@@ -2328,6 +2377,7 @@ function toggleDoorOpen(x,y,z){
   editedBlocks.set(blockKey(x,bottomY+1,z),makeBlockRecord(OAK_DOOR_TYPE,axis,"top",nextOpen));
   needRebuild=true;
   playSound(OAK_PLANKS_BREAK_SOUND_URL);
+  if(!silent) sendOnlinePayload({kind:"block",action:"doorToggle",x,y,z});
   return true;
 }
 
@@ -2337,6 +2387,7 @@ function getDoorPlaceAxis(){
 }
 
 function worldHash(x,z){
+  x += worldSeedX; z += worldSeedZ;
   let h=(x*374761393+z*668265263)^0x9e3779b9;
   h^=h>>13;
   h*=0x85ebca6b;
@@ -2349,10 +2400,10 @@ function getHeight(x,z){
 
   const h=
     16+
-    Math.sin(x*.13)*3+
-    Math.cos(z*.12)*3+
-    Math.sin((x+z)*.045)*5+
-    noise(x,z,18)*5;
+    Math.sin((x+worldSeedX)*.13)*3+
+    Math.cos((z+worldSeedZ)*.12)*3+
+    Math.sin((x+z+worldSeedX-worldSeedZ)*.045)*5+
+    noise(x+worldSeedX,z+worldSeedZ,18)*5;
 
   return Math.max(8,Math.min(MAX_HEIGHT-10,Math.round(h)));
 }
@@ -2712,6 +2763,7 @@ function makeSceneObjects(){
 
   playerModel=makePlayerModel();
   scene.add(playerModel);
+  if(onlineEnabled && !remotePlayer) remotePlayer=makeRemotePlayer();
 
   animalRoot=new THREE.Group();
   scene.add(animalRoot);
@@ -2920,7 +2972,11 @@ let sprinting=false;
 let lastSpaceTap=0;
 let lastWTap=0;
 let worldType="normal";
+let worldSeedX=0, worldSeedZ=0;
 let playerModel=null;
+let localPlayerName = localStorage.getItem("craftblock_player_name") || "プレイヤー";
+let onlineEnabled=false, onlineHost=false, onlineRoomId="";
+let remotePlayer=null, remoteNameSprite=null, lastOnlineSend=0;
 let animalRoot=null;
 let animalLastCX=999999;
 let animalLastCZ=999999;
@@ -4371,6 +4427,102 @@ function setupTouchControls(){
 setupTouchControls();
 setTouchModeEnabled(touchModeEnabled);
 
+
+function makeNameSprite(text){
+  const canvas=document.createElement("canvas");
+  canvas.width=256; canvas.height=64;
+  const ctx=canvas.getContext("2d");
+  ctx.clearRect(0,0,256,64);
+  ctx.fillStyle="rgba(0,0,0,.45)";
+  ctx.fillRect(8,10,240,44);
+  ctx.font="bold 26px sans-serif";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  ctx.fillStyle="#fff";
+  ctx.strokeStyle="#000";
+  ctx.lineWidth=4;
+  ctx.strokeText(text || "プレイヤー",128,32);
+  ctx.fillText(text || "プレイヤー",128,32);
+  const tex=new THREE.CanvasTexture(canvas);
+  tex.needsUpdate=true;
+  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false});
+  const sp=new THREE.Sprite(mat);
+  sp.scale.set(2.8,.7,1);
+  sp.renderOrder=999;
+  return sp;
+}
+function makeRemotePlayer(){
+  const g=new THREE.Group();
+  const mat=new THREE.MeshLambertMaterial({color:0x2f68d8});
+  const head=new THREE.Mesh(new THREE.BoxGeometry(.55,.55,.55),mat); head.position.y=1.55; g.add(head);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.62,.78,.28),mat); body.position.y=.95; g.add(body);
+  const armL=new THREE.Mesh(new THREE.BoxGeometry(.22,.72,.22),mat); armL.position.set(-.43,.95,0); g.add(armL);
+  const armR=new THREE.Mesh(new THREE.BoxGeometry(.22,.72,.22),mat); armR.position.set(.43,.95,0); g.add(armR);
+  const legL=new THREE.Mesh(new THREE.BoxGeometry(.24,.72,.24),mat); legL.position.set(-.18,.36,0); g.add(legL);
+  const legR=new THREE.Mesh(new THREE.BoxGeometry(.24,.72,.24),mat); legR.position.set(.18,.36,0); g.add(legR);
+  g.userData={armL,armR,legL,legR,name:"プレイヤー"};
+  remoteNameSprite=makeNameSprite("プレイヤー");
+  remoteNameSprite.position.y=2.25;
+  g.add(remoteNameSprite);
+  g.visible=false;
+  scene.add(g);
+  return g;
+}
+function updateRemoteName(name){
+  if(!remotePlayer) remotePlayer=makeRemotePlayer();
+  if(remotePlayer.userData.name===name) return;
+  remotePlayer.userData.name=name;
+  if(remoteNameSprite){
+    remotePlayer.remove(remoteNameSprite);
+    if(remoteNameSprite.material){ if(remoteNameSprite.material.map) remoteNameSprite.material.map.dispose(); remoteNameSprite.material.dispose(); }
+  }
+  remoteNameSprite=makeNameSprite(name);
+  remoteNameSprite.position.y=2.25;
+  remotePlayer.add(remoteNameSprite);
+}
+function handleOnlinePayload(payload){
+  if(!payload || !onlineEnabled) return;
+  if(payload.kind==="state"){
+    if(!remotePlayer) remotePlayer=makeRemotePlayer();
+    remotePlayer.visible=true;
+    remotePlayer.position.set(Number(payload.x)||0,Number(payload.y)||0,Number(payload.z)||0);
+    remotePlayer.rotation.y=(Number(payload.yaw)||0)+Math.PI;
+    updateRemoteName(payload.name || "プレイヤー");
+    const moving=!!payload.moving;
+    const w=Math.sin(performance.now()*.010);
+    for(const [part,sign] of [[remotePlayer.userData.armR,1],[remotePlayer.userData.armL,-1],[remotePlayer.userData.legR,-1],[remotePlayer.userData.legL,1]]){
+      if(part) part.rotation.x=moving ? w*.55*sign : part.rotation.x*.75;
+    }
+  }
+  if(payload.kind==="block"){
+    if(payload.action==="set") setEditedBlock(payload.x,payload.y,payload.z,payload.type,payload.axis,payload.part,payload.open,true);
+    if(payload.action==="remove") removeEditedBlock(payload.x,payload.y,payload.z,true);
+    if(payload.action==="doorRemove") removeDoorBothParts(payload.x,payload.y,payload.z);
+    if(payload.action==="doorToggle") toggleDoorOpen(payload.x,payload.y,payload.z,true);
+    needRebuild=true;
+  }
+}
+function sendOnlinePayload(payload){
+  if(onlineEnabled && window.parent){
+    window.parent.postMessage({craftblock:"onlinePayload",payload},"*");
+  }
+}
+function sendOnlineState(now){
+  if(!onlineEnabled || now-lastOnlineSend<50) return;
+  lastOnlineSend=now;
+  sendOnlinePayload({kind:"state",x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:yaw,pitch:pitch,name:localPlayerName,moving:(Math.abs(player.vel.x)+Math.abs(player.vel.z))>.08});
+}
+function setPlayerDisplayName(name){
+  localPlayerName=String(name||"プレイヤー").trim().slice(0,16) || "プレイヤー";
+  localStorage.setItem("craftblock_player_name",localPlayerName);
+  sendOnlinePayload({kind:"name",name:localPlayerName});
+}
+function setPhoneUiModeEnabled(enabled){
+  localStorage.setItem("craftblock_phone_ui", enabled ? "1" : "0");
+  document.getElementById("wrap").classList.toggle("phoneUiMode",!!enabled);
+  const c=document.getElementById("phoneToggleCheck"); if(c) c.checked=!!enabled;
+}
+
 const GRAVITY=-22;
 const SPEED=5;
 const FLY_SPEED=7;
@@ -4500,6 +4652,7 @@ function loop(t){
   player.pos.copy(next);
 
   updatePlayerModel();
+  sendOnlineState(t);
   updateCameraForView();
 
   rebuildMeshes(player.pos.x,player.pos.z);
@@ -4856,12 +5009,16 @@ function createOnlineRoom(){
         if(data.type==="hello"){
           conn.send({type:"roomFound",roomId:onlineRoomId});
         }
+        if(data.type==="gameSync"){
+          gameFrame.contentWindow?.postMessage({craftblock:"onlineSync",payload:data.payload},"*");
+        }
         if(data.type==="enterWorld"){
           hostRoomStatus.textContent="相手がワールドに入りました。開始します。";
-          onlineWorldData={worldType:"normal",timeMode:"normal",timeCycle:0,blocks:null,createdOnline:true};
+          onlineWorldData={worldType:"normal",timeMode:"normal",timeCycle:0,worldSeedX:Math.floor(Math.random()*100000),worldSeedZ:Math.floor(Math.random()*100000),blocks:null,createdOnline:true};
           onlineWorldData.skinData=TITLE_CURRENT_SKIN_DATA;
           onlineWorldData.skinName=TITLE_CURRENT_SKIN_NAME;
           onlineWorldData.skinSlim=TITLE_CURRENT_SKIN_SLIM;
+          onlineWorldData.playerName=localStorage.getItem("craftblock_player_name") || "プレイヤー";
           conn.send({type:"launchWorld",worldData:onlineWorldData,roomId:onlineRoomId});
           launchMultiplayerWorld(onlineWorldData,onlineRoomId,true);
         }
@@ -4895,6 +5052,9 @@ function searchOnlineRoom(){
           foundRoomText.textContent="部屋ID: "+id+" が見つかりました。";
           setRoomCorner("部屋ID: "+id);
         }
+        if(data.type==="gameSync"){
+          gameFrame.contentWindow?.postMessage({craftblock:"onlineSync",payload:data.payload},"*");
+        }
         if(data.type==="launchWorld"){
           launchMultiplayerWorld(data.worldData||{worldType:"normal",timeMode:"normal"},data.roomId||id,false);
         }
@@ -4921,15 +5081,19 @@ function launchMultiplayerWorld(worldData,roomId,isHost){
   pendingWorldData = Object.assign({worldType:"normal",timeMode:"normal",timeCycle:0}, worldData || {});
   pendingWorldData.onlineRoomId=roomId;
   pendingWorldData.onlineHost=!!isHost;
+  pendingWorldData.playerName=localStorage.getItem("craftblock_player_name") || "プレイヤー";
+  pendingWorldData.phoneUiMode=localStorage.getItem("craftblock_phone_ui") === "1";
   hideAllOuterScreens();
   gameScreen.style.display="block";
-  setRoomCorner("部屋ID: "+roomId);
+  setRoomCorner("");
   if(!gameLoaded){
     gameFrame.srcdoc = gameSource.value;
     gameLoaded = true;
   }else{
     gameFrame.contentWindow?.postMessage({craftblock:"loadWorld",data:pendingWorldData}, "*");
     gameFrame.contentWindow?.postMessage({craftblock:"setTouchMode", enabled:localStorage.getItem("craftblock_touch_mode")==="1"}, "*");
+    gameFrame.contentWindow?.postMessage({craftblock:"setPhoneUiMode", enabled:localStorage.getItem("craftblock_phone_ui")==="1"}, "*");
+    gameFrame.contentWindow?.postMessage({craftblock:"setPlayerName", name:localStorage.getItem("craftblock_player_name") || "プレイヤー"}, "*");
     gameFrame.contentWindow?.postMessage({craftblock:"setSkin",data:pendingWorldData.skinData || localStorage.getItem("craftblock_skin_data"),name:pendingWorldData.skinName || localStorage.getItem("craftblock_skin_name"),slim:!!pendingWorldData.skinSlim}, "*");
   }
   setTimeout(()=>gameFrame.focus(),100);
@@ -5114,6 +5278,8 @@ function launchWorld(world){
   pendingWorldData.skinData = TITLE_CURRENT_SKIN_DATA;
   pendingWorldData.skinName = TITLE_CURRENT_SKIN_NAME;
   pendingWorldData.skinSlim = TITLE_CURRENT_SKIN_SLIM;
+  pendingWorldData.playerName = localStorage.getItem("craftblock_player_name") || "プレイヤー";
+  pendingWorldData.phoneUiMode = localStorage.getItem("craftblock_phone_ui") === "1";
 
   hideAllOuterScreens();
   gameScreen.style.display = "block";
@@ -5127,6 +5293,8 @@ function launchWorld(world){
       data:pendingWorldData
     }, "*");
     gameFrame.contentWindow?.postMessage({craftblock:"setTouchMode", enabled:localStorage.getItem("craftblock_touch_mode")==="1"}, "*");
+    gameFrame.contentWindow?.postMessage({craftblock:"setPhoneUiMode", enabled:localStorage.getItem("craftblock_phone_ui")==="1"}, "*");
+    gameFrame.contentWindow?.postMessage({craftblock:"setPlayerName", name:localStorage.getItem("craftblock_player_name") || "プレイヤー"}, "*");
     gameFrame.contentWindow?.postMessage({
       craftblock:"setSkin",
       data:localStorage.getItem("craftblock_skin_data"),
@@ -5156,7 +5324,7 @@ function createNewWorld(){
     timeMode:timeMode,
     created:Date.now(),
     updated:Date.now(),
-    data:{worldType:type,timeMode:timeMode,timeCycle:0}
+    data:{worldType:type,timeMode:timeMode,timeCycle:0,worldSeedX:Math.floor(Math.random()*100000),worldSeedZ:Math.floor(Math.random()*100000)}
   };
   worlds.push(world);
   saveWorlds();
@@ -5175,7 +5343,7 @@ function showTitleAfterGame(){
   }
   hideAllOuterScreens();
   titleScreen.style.display = "block";
-  setRoomCorner(onlineRoomId ? "部屋ID: "+onlineRoomId : "");
+  setRoomCorner("");
   renderWorldList();
 }
 
@@ -5243,12 +5411,18 @@ window.addEventListener("message", e=>{
   const msg = e.data;
   if(!msg || !msg.craftblock) return;
 
+  if(msg.craftblock === "onlinePayload"){
+    if(onlineConn && onlineConn.open) onlineConn.send({type:"gameSync",payload:msg.payload});
+  }
+
   if(msg.craftblock === "gameReady"){
     gameFrame.contentWindow?.postMessage({
       craftblock:"loadWorld",
       data:pendingWorldData
     }, "*");
     gameFrame.contentWindow?.postMessage({craftblock:"setTouchMode", enabled:localStorage.getItem("craftblock_touch_mode")==="1"}, "*");
+    gameFrame.contentWindow?.postMessage({craftblock:"setPhoneUiMode", enabled:localStorage.getItem("craftblock_phone_ui")==="1"}, "*");
+    gameFrame.contentWindow?.postMessage({craftblock:"setPlayerName", name:localStorage.getItem("craftblock_player_name") || "プレイヤー"}, "*");
     gameFrame.contentWindow?.postMessage({
       craftblock:"setSkin",
       data:localStorage.getItem("craftblock_skin_data"),
@@ -5314,6 +5488,28 @@ if(fullscreenCheckOuter) fullscreenCheckOuter.addEventListener("change",()=>{
 document.addEventListener("fullscreenchange",()=>{
   fullscreenCheck.checked = !!document.fullscreenElement;
 });
+
+function syncTitleSettingInputs(){
+  const name=document.getElementById("playerNameInput");
+  if(name) name.value=localStorage.getItem("craftblock_player_name") || "プレイヤー";
+  const phone=document.getElementById("homePhoneToggleCheck");
+  if(phone) phone.checked=localStorage.getItem("craftblock_phone_ui")==="1";
+}
+setTimeout(()=>{
+  syncTitleSettingInputs();
+  const name=document.getElementById("playerNameInput");
+  if(name) name.addEventListener("input",()=>{
+    const v=(name.value||"プレイヤー").trim().slice(0,16) || "プレイヤー";
+    localStorage.setItem("craftblock_player_name",v);
+    gameFrame.contentWindow?.postMessage({craftblock:"setPlayerName",name:v},"*");
+  });
+  const phone=document.getElementById("homePhoneToggleCheck");
+  if(phone) phone.addEventListener("change",()=>{
+    localStorage.setItem("craftblock_phone_ui", phone.checked ? "1" : "0");
+    gameFrame.contentWindow?.postMessage({craftblock:"setPhoneUiMode",enabled:phone.checked},"*");
+  });
+},0);
+
 </script>
 </body>
 </html>
