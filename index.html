@@ -2696,20 +2696,64 @@ function sendSaveToParent(kind="saveWorld"){
 let LOCAL_PLAYER_NAME="プレイヤー";
 let onlineRemote=null;
 let lastNetSend=0;
+let lastSkinNetSend=0;
+let pendingRemoteState=null;
+let remoteSkinKey="";
+
+function addRemoteNameLabel(g){
+  if(!g) return;
+  if(g.userData.nameCanvas) return;
+  const canvas=document.createElement("canvas"); canvas.width=256; canvas.height=48;
+  const tex=new THREE.CanvasTexture(canvas);
+  const smat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false});
+  const label=new THREE.Sprite(smat); label.position.y=2.55; label.scale.set(2.2,.42,1); g.add(label);
+  g.userData.nameCanvas=canvas; g.userData.nameTexture=tex;
+}
+
+function disposeRemotePlayer(){
+  if(!onlineRemote) return;
+  scene.remove(onlineRemote);
+  onlineRemote.traverse(o=>{ if(o.geometry) o.geometry.dispose(); });
+  onlineRemote=null;
+}
+
 function makeRemotePlayer(){
   const g=new THREE.Group();
   const mat=new THREE.MeshLambertMaterial({color:0x222222});
   const body=new THREE.Mesh(new THREE.BoxGeometry(.58,1.15,.32),mat); body.position.y=.75; g.add(body);
   const head=new THREE.Mesh(new THREE.BoxGeometry(.52,.52,.52),mat); head.position.y=1.6; g.add(head);
-  const canvas=document.createElement("canvas"); canvas.width=256; canvas.height=48;
-  const tex=new THREE.CanvasTexture(canvas);
-  const smat=new THREE.SpriteMaterial({map:tex,transparent:true});
-  const label=new THREE.Sprite(smat); label.position.y=2.25; label.scale.set(2.2,.42,1); g.add(label);
-  g.userData.nameCanvas=canvas; g.userData.nameTexture=tex;
+  addRemoteNameLabel(g);
   scene.add(g);
   return g;
 }
+
+async function makeRemotePlayerFromSkin(data,slim){
+  const key=String(data||"").slice(0,80)+":"+(slim?"1":"0");
+  if(!data || remoteSkinKey===key) return;
+  remoteSkinKey=key;
+  const oldImg=STEVE_SKIN_IMG;
+  const oldSlim=CURRENT_SKIN_SLIM;
+  try{
+    const img=await loadImage(data);
+    STEVE_SKIN_IMG=img;
+    CURRENT_SKIN_SLIM=!!slim;
+    disposeRemotePlayer();
+    onlineRemote=makePlayerModel();
+    onlineRemote.visible=true;
+    addRemoteNameLabel(onlineRemote);
+    scene.add(onlineRemote);
+    if(pendingRemoteState) applyRemotePlayerState(pendingRemoteState);
+  }catch(e){
+    if(!onlineRemote) onlineRemote=makeRemotePlayer();
+  }finally{
+    STEVE_SKIN_IMG=oldImg;
+    CURRENT_SKIN_SLIM=oldSlim;
+  }
+}
+
 function setRemoteName(obj,name){
+  if(!obj) return;
+  addRemoteNameLabel(obj);
   const c=obj.userData.nameCanvas, ctx=c.getContext("2d");
   ctx.clearRect(0,0,c.width,c.height);
   ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(0,4,c.width,38);
@@ -2719,11 +2763,21 @@ function setRemoteName(obj,name){
 }
 function sendOnlinePlayerState(t){
   if(!window.parent) return;
-  if(t-lastNetSend<70) return;
+  if(t-lastNetSend<55) return;
   lastNetSend=t;
-  window.parent.postMessage({craftblockNet:"state",state:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:yaw,name:LOCAL_PLAYER_NAME}},"*");
+  const st={x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:yaw,name:LOCAL_PLAYER_NAME};
+  if(!lastSkinNetSend || t-lastSkinNetSend>1200){
+    lastSkinNetSend=t;
+    st.skinData=CURRENT_SKIN_DATA;
+    st.skinName=CURRENT_SKIN_NAME;
+    st.skinSlim=CURRENT_SKIN_SLIM;
+  }
+  window.parent.postMessage({craftblockNet:"state",state:st},"*");
 }
 function applyRemotePlayerState(st){
+  pendingRemoteState=st || pendingRemoteState;
+  st=pendingRemoteState || {};
+  if(st.skinData){ makeRemotePlayerFromSkin(st.skinData,!!st.skinSlim); }
   if(!onlineRemote){ onlineRemote=makeRemotePlayer(); }
   onlineRemote.visible=true;
   onlineRemote.position.set(+st.x||0,+st.y||0,+st.z||0);
@@ -5667,11 +5721,12 @@ function createOnlineRoom(){
         }
         if(data.type==="enterWorld"){
           hostRoomStatus.textContent="相手がワールドに入りました。開始します。";
-          onlineWorldData={worldType:"normal",timeMode:"normal",timeCycle:0,blocks:null,createdOnline:true};
+          const sharedSeed=Math.floor(Math.random()*1000000000);
+          onlineWorldData={worldType:"normal",timeMode:"normal",timeCycle:0,blocks:null,createdOnline:true,seed:sharedSeed,player:{x:0,y:0,z:0,yaw:0,pitch:0}};
           onlineWorldData.skinData=TITLE_CURRENT_SKIN_DATA;
           onlineWorldData.skinName=TITLE_CURRENT_SKIN_NAME;
           onlineWorldData.skinSlim=TITLE_CURRENT_SKIN_SLIM;
-          conn.send({type:"launchWorld",worldData:onlineWorldData,roomId:onlineRoomId});
+          conn.send({type:"launchWorld",worldData:onlineWorldData,roomId:onlineRoomId,hostSkin:{data:TITLE_CURRENT_SKIN_DATA,name:TITLE_CURRENT_SKIN_NAME,slim:TITLE_CURRENT_SKIN_SLIM}});
           launchMultiplayerWorld(onlineWorldData,onlineRoomId,true);
         }
       });
@@ -5707,6 +5762,10 @@ function searchOnlineRoom(){
         }
         if(data.type==="launchWorld"){
           launchMultiplayerWorld(data.worldData||{worldType:"normal",timeMode:"normal"},data.roomId||id,false);
+          if(data.hostSkin){
+            const wd=data.worldData||{};
+            forwardOnlineToGame({type:"playerState",state:{x:(wd.player&&wd.player.x)||0,y:(wd.player&&wd.player.y)||0,z:(wd.player&&wd.player.z)||0,yaw:0,name:"ホスト",skinData:data.hostSkin.data,skinName:data.hostSkin.name,skinSlim:!!data.hostSkin.slim}});
+          }
         }
       });
       onlineConn.on("close",()=>{ joinRoomStatus.textContent="接続が切れました。"; });
@@ -5732,6 +5791,10 @@ function launchMultiplayerWorld(worldData,roomId,isHost){
   pendingWorldData.onlineRoomId=roomId;
   pendingWorldData.onlineHost=!!isHost;
   pendingWorldData.playerName=getCraftBlockPlayerName();
+  // 自分の画面では必ず自分のスキンを使う。相手のスキンは通信で別モデルに反映する。
+  pendingWorldData.skinData=TITLE_CURRENT_SKIN_DATA;
+  pendingWorldData.skinName=TITLE_CURRENT_SKIN_NAME;
+  pendingWorldData.skinSlim=TITLE_CURRENT_SKIN_SLIM;
   hideAllOuterScreens();
   gameScreen.style.display="block";
   setRoomCorner("部屋ID: "+roomId);
@@ -5809,6 +5872,7 @@ let selectedCreateGameMode = "creative";
 let pendingReturnTitle = false;
 
 let multiplayerSendTimer=0;
+let pendingOnlineGameMessages=[];
 function sendOnlineData(data){
   if(onlineConn && onlineConn.open) onlineConn.send(data);
 }
@@ -5818,9 +5882,18 @@ window.addEventListener("message", e=>{
   if(msg.craftblockNet==="state") sendOnlineData({type:"playerState",state:msg.state});
   if(msg.craftblockNet==="block") sendOnlineData({type:"blockOp",op:msg.op});
 });
+function flushPendingOnlineToGame(){
+  if(!gameLoaded || !gameFrame.contentWindow) return;
+  const list=pendingOnlineGameMessages.splice(0,pendingOnlineGameMessages.length);
+  for(const data of list){
+    gameFrame.contentWindow.postMessage({craftblock:"onlineData",data:data},"*");
+  }
+}
 function forwardOnlineToGame(data){
   if(gameLoaded && gameFrame.contentWindow){
     gameFrame.contentWindow.postMessage({craftblock:"onlineData",data:data},"*");
+  }else{
+    pendingOnlineGameMessages.push(data);
   }
 }
 
@@ -5982,6 +6055,7 @@ function launchWorld(world){
       name:localStorage.getItem("craftblock_skin_name"),
       slim:localStorage.getItem("craftblock_skin_slim")==="true"
     }, "*");
+    setTimeout(flushPendingOnlineToGame,80);
   }
 
   setTimeout(()=>{
@@ -6113,6 +6187,7 @@ window.addEventListener("message", e=>{
       name:localStorage.getItem("craftblock_skin_name"),
       slim:localStorage.getItem("craftblock_skin_slim")==="true"
     }, "*");
+    setTimeout(flushPendingOnlineToGame,80);
   }
 
   if(msg.craftblock === "saveWorld"){
