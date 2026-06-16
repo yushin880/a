@@ -314,7 +314,7 @@ button:hover{background:#8a8a8a}
 <body>
 
 <div id="titleScreen" class="screen">
-  <img class="logo" src="https://github.com/yushin880/CraftBlock/releases/download/v1.0/Craftblock.logo.png" alt="CraftBlock">
+  <img class="logo" src="https://github.com/yushin880/a/releases/download/v1.0/2026-06-16.175943.png" alt="CraftBlock">
   <div id="splashText">CraftBlock!</div>
 
   <div class="menu">
@@ -2593,6 +2593,9 @@ function getRecordOpen(record){
 
 function importWorldData(data){
   resetGameMenus();
+  disposeRemotePlayer();
+  remoteSkinKey="";
+  pendingRemoteState=null;
   if(data && data.skinData){
     applySkinData(data.skinData, data.skinName || "カスタム", !!data.skinSlim);
   }
@@ -2699,6 +2702,15 @@ let lastNetSend=0;
 let lastSkinNetSend=0;
 let pendingRemoteState=null;
 let remoteSkinKey="";
+function makeSkinKeyExact(data, slim){
+  const str=String(data||"");
+  let h=2166136261;
+  for(let i=0;i<str.length;i++){
+    h^=str.charCodeAt(i);
+    h=Math.imul(h,16777619);
+  }
+  return (slim?"1":"0")+":"+str.length+":"+(h>>>0);
+}
 
 function addRemoteNameLabel(g){
   if(!g) return;
@@ -2728,7 +2740,7 @@ function makeRemotePlayer(){
 }
 
 async function makeRemotePlayerFromSkin(data,slim){
-  const key=String(data||"").slice(0,80)+":"+(slim?"1":"0");
+  const key=makeSkinKeyExact(data,slim);
   if(!data || remoteSkinKey===key) return;
   remoteSkinKey=key;
   const oldImg=STEVE_SKIN_IMG;
@@ -2737,13 +2749,19 @@ async function makeRemotePlayerFromSkin(data,slim){
     const img=await loadImage(data);
     STEVE_SKIN_IMG=img;
     CURRENT_SKIN_SLIM=!!slim;
+    const keepState=pendingRemoteState;
     disposeRemotePlayer();
     onlineRemote=makePlayerModel();
     onlineRemote.visible=true;
     addRemoteNameLabel(onlineRemote);
     scene.add(onlineRemote);
-    if(pendingRemoteState) applyRemotePlayerState(pendingRemoteState);
+    if(keepState){
+      onlineRemote.position.set(+keepState.x||0,+keepState.y||0,+keepState.z||0);
+      onlineRemote.rotation.y=+(keepState.yaw||0);
+      setRemoteName(onlineRemote,keepState.name||keepState.skinName||"プレイヤー");
+    }
   }catch(e){
+    remoteSkinKey="";
     if(!onlineRemote) onlineRemote=makeRemotePlayer();
   }finally{
     STEVE_SKIN_IMG=oldImg;
@@ -2765,13 +2783,11 @@ function sendOnlinePlayerState(t){
   if(!window.parent) return;
   if(t-lastNetSend<55) return;
   lastNetSend=t;
-  const st={x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:yaw,name:LOCAL_PLAYER_NAME};
-  if(!lastSkinNetSend || t-lastSkinNetSend>1200){
-    lastSkinNetSend=t;
-    st.skinData=CURRENT_SKIN_DATA;
-    st.skinName=CURRENT_SKIN_NAME;
-    st.skinSlim=CURRENT_SKIN_SLIM;
-  }
+  // マルチでは毎回スキン情報も送る。これで相手のPNGスキンをそのまま反映できる。
+  const st={
+    x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:yaw,name:LOCAL_PLAYER_NAME,
+    skinData:CURRENT_SKIN_DATA,skinName:CURRENT_SKIN_NAME,skinSlim:CURRENT_SKIN_SLIM
+  };
   window.parent.postMessage({craftblockNet:"state",state:st},"*");
 }
 function applyRemotePlayerState(st){
@@ -2782,7 +2798,7 @@ function applyRemotePlayerState(st){
   onlineRemote.visible=true;
   onlineRemote.position.set(+st.x||0,+st.y||0,+st.z||0);
   onlineRemote.rotation.y=+(st.yaw||0);
-  setRemoteName(onlineRemote,st.name||"プレイヤー");
+  setRemoteName(onlineRemote,st.name||st.skinName||"プレイヤー");
 }
 function sendOnlineBlockOp(op){
   if(window.parent) window.parent.postMessage({craftblockNet:"block",op:op},"*");
@@ -5717,9 +5733,11 @@ function createOnlineRoom(){
         if(!data || !data.type) return;
         if(data.type==="playerState" || data.type==="blockOp") forwardOnlineToGame(data);
         if(data.type==="hello"){
-          conn.send({type:"roomFound",roomId:onlineRoomId});
+          if(data.skin){ onlinePeerSkinState={x:0,y:0,z:0,yaw:0,name:data.name||"プレイヤー",skinData:data.skin.data,skinName:data.skin.name,skinSlim:!!data.skin.slim}; forwardOnlineToGame({type:"playerState",state:onlinePeerSkinState}); }
+          conn.send({type:"roomFound",roomId:onlineRoomId,hostSkin:{data:TITLE_CURRENT_SKIN_DATA,name:TITLE_CURRENT_SKIN_NAME,slim:TITLE_CURRENT_SKIN_SLIM}});
         }
         if(data.type==="enterWorld"){
+          if(data.skin){ onlinePeerSkinState={x:0,y:0,z:0,yaw:0,name:data.name||"プレイヤー",skinData:data.skin.data,skinName:data.skin.name,skinSlim:!!data.skin.slim}; }
           hostRoomStatus.textContent="相手がワールドに入りました。開始します。";
           const sharedSeed=Math.floor(Math.random()*1000000000);
           onlineWorldData={worldType:"normal",timeMode:"normal",timeCycle:0,blocks:null,createdOnline:true,seed:sharedSeed,player:{x:0,y:0,z:0,yaw:0,pitch:0}};
@@ -5728,6 +5746,7 @@ function createOnlineRoom(){
           onlineWorldData.skinSlim=TITLE_CURRENT_SKIN_SLIM;
           conn.send({type:"launchWorld",worldData:onlineWorldData,roomId:onlineRoomId,hostSkin:{data:TITLE_CURRENT_SKIN_DATA,name:TITLE_CURRENT_SKIN_NAME,slim:TITLE_CURRENT_SKIN_SLIM}});
           launchMultiplayerWorld(onlineWorldData,onlineRoomId,true);
+          if(onlinePeerSkinState) setTimeout(()=>forwardOnlineToGame({type:"playerState",state:onlinePeerSkinState}),250);
         }
       });
       conn.on("close",()=>{ hostRoomStatus.textContent="相手の接続が切れました。"; });
@@ -5750,11 +5769,12 @@ function searchOnlineRoom(){
     onlinePeer=new Peer(undefined,{debug:0});
     onlinePeer.on("open",()=>{
       onlineConn=onlinePeer.connect("craftblock-"+id,{reliable:true});
-      onlineConn.on("open",()=>{ onlineConn.send({type:"hello"}); });
+      onlineConn.on("open",()=>{ onlineConn.send({type:"hello",name:getCraftBlockPlayerName(),skin:{data:TITLE_CURRENT_SKIN_DATA,name:TITLE_CURRENT_SKIN_NAME,slim:TITLE_CURRENT_SKIN_SLIM}}); });
       onlineConn.on("data",data=>{
         if(!data || !data.type) return;
         if(data.type==="playerState" || data.type==="blockOp") forwardOnlineToGame(data);
         if(data.type==="roomFound"){
+          if(data.hostSkin){ onlinePeerSkinState={x:0,y:0,z:0,yaw:0,name:"ホスト",skinData:data.hostSkin.data,skinName:data.hostSkin.name,skinSlim:!!data.hostSkin.slim}; }
           hideAllOuterScreens();
           foundRoomScreen.style.display="block";
           foundRoomText.textContent="部屋ID: "+id+" が見つかりました。";
@@ -5780,7 +5800,7 @@ function searchOnlineRoom(){
 function requestEnterOnlineWorld(){
   if(onlineConn && onlineConn.open){
     foundRoomText.textContent="作った側に参加を送信中...";
-    onlineConn.send({type:"enterWorld"});
+    onlineConn.send({type:"enterWorld",name:getCraftBlockPlayerName(),skin:{data:TITLE_CURRENT_SKIN_DATA,name:TITLE_CURRENT_SKIN_NAME,slim:TITLE_CURRENT_SKIN_SLIM}});
   }else{
     foundRoomText.textContent="接続が切れました。もう一回検索してください。";
   }
@@ -5873,6 +5893,7 @@ let pendingReturnTitle = false;
 
 let multiplayerSendTimer=0;
 let pendingOnlineGameMessages=[];
+let onlinePeerSkinState=null;
 function sendOnlineData(data){
   if(onlineConn && onlineConn.open) onlineConn.send(data);
 }
