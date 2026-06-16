@@ -395,9 +395,28 @@ button:hover{background:#8a8a8a}
 <div id="multiplayerScreen" class="screen" style="display:none">
   <div class="panel">
     <h1>マルチプレイ</h1>
-    <p>部屋を作るか、友達の部屋IDを検索します。</p>
+    <p>部屋を作る時のワールド設定を選べます。</p>
+
+    <div class="createSettings">
+      <div class="createLabel">ワールド設定</div>
+      <button id="onlineWorldTypeBtn" class="worldTypeBtn" onclick="toggleOnlineWorldType()">ワールドタイプ: 普通</button>
+      <div id="onlineWorldTypeHelp" class="worldTypeHelp">普通: 山や木があるランダム地形</div>
+    </div>
+
+    <div class="createSettings">
+      <div class="createLabel">ゲームモード</div>
+      <button id="onlineGameModeBtn" class="worldTypeBtn" onclick="toggleOnlineGameMode()">ゲームモード: クリエイティブ</button>
+      <div id="onlineGameModeHelp" class="worldTypeHelp">クリエイティブ: 自由にブロックを取り出せます</div>
+    </div>
+
+    <div class="createSettings">
+      <div class="createLabel">時間</div>
+      <button id="onlineTimeModeBtn" class="worldTypeBtn" onclick="toggleOnlineTimeMode()">時間設定: 通常</button>
+      <div id="onlineTimeModeHelp" class="worldTypeHelp">通常: 時間が回ります</div>
+    </div>
+
     <div class="menu">
-      <button onclick="createOnlineRoom()">部屋を作る</button>
+      <button onclick="createOnlineRoom()">この設定で部屋を作る</button>
       <button onclick="openSearchRoomScreen()">部屋を検索</button>
       <button onclick="backTitleFromMultiplayer()">戻る</button>
     </div>
@@ -5667,6 +5686,34 @@ let onlineConn=null;
 let onlineRoomId="";
 let onlineMode="";
 let onlineWorldData=null;
+let selectedOnlineWorldType="normal";
+let selectedOnlineGameMode="creative";
+let selectedOnlineTimeMode="normal";
+let closingOnlineByUser=false;
+
+function updateOnlineCreateButtons(){
+  const wt=document.getElementById("onlineWorldTypeBtn");
+  const wh=document.getElementById("onlineWorldTypeHelp");
+  const gm=document.getElementById("onlineGameModeBtn");
+  const gh=document.getElementById("onlineGameModeHelp");
+  const tm=document.getElementById("onlineTimeModeBtn");
+  const th=document.getElementById("onlineTimeModeHelp");
+  if(wt) wt.textContent="ワールドタイプ: "+(selectedOnlineWorldType==="flat"?"フラット":"普通");
+  if(wh) wh.textContent=selectedOnlineWorldType==="flat"?"フラット: まっすぐな平面の世界":"普通: 山や木があるランダム地形";
+  if(gm) gm.textContent="ゲームモード: "+(selectedOnlineGameMode==="survival"?"サバイバル":"クリエイティブ");
+  if(gh) gh.textContent=selectedOnlineGameMode==="survival"?"サバイバル: 掘ったブロックだけ手持ちに入ります":"クリエイティブ: 自由にブロックを取り出せます";
+  if(tm) tm.textContent="時間設定: "+(selectedOnlineTimeMode==="always_day"?"常に昼":"通常");
+  if(th) th.textContent=selectedOnlineTimeMode==="always_day"?"常に昼: ずっと明るいままです":"通常: 時間が回ります";
+}
+function toggleOnlineWorldType(){ selectedOnlineWorldType = selectedOnlineWorldType==="normal" ? "flat" : "normal"; updateOnlineCreateButtons(); }
+function toggleOnlineGameMode(){ selectedOnlineGameMode = selectedOnlineGameMode==="creative" ? "survival" : "creative"; updateOnlineCreateButtons(); }
+function toggleOnlineTimeMode(){ selectedOnlineTimeMode = selectedOnlineTimeMode==="normal" ? "always_day" : "normal"; updateOnlineCreateButtons(); }
+function forceTitleByOnlineDisconnect(){
+  try{ if(gameFrame && gameFrame.contentWindow) gameFrame.contentWindow.postMessage({craftblock:"resetMenus"},"*"); }catch(e){}
+  setRoomCorner("");
+  hideAllOuterScreens();
+  titleScreen.style.display="block";
+}
 
 function makeRoomCode(){
   const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -5692,13 +5739,16 @@ function loadPeerJsThen(cb){
   document.head.appendChild(sc);
 }
 function closeOnlinePeer(){
+  closingOnlineByUser=true;
   try{ if(onlineConn) onlineConn.close(); }catch(e){}
   try{ if(onlinePeer) onlinePeer.destroy(); }catch(e){}
   onlinePeer=null; onlineConn=null; onlineRoomId=""; onlineMode=""; onlineWorldData=null;
   setRoomCorner("");
+  setTimeout(()=>{ closingOnlineByUser=false; },300);
 }
 function openMultiplayerScreen(){
   hideAllOuterScreens();
+  updateOnlineCreateButtons();
   multiplayerScreen.style.display="block";
 }
 function backTitleFromMultiplayer(){
@@ -5740,7 +5790,7 @@ function createOnlineRoom(){
           if(data.skin){ onlinePeerSkinState={x:0,y:0,z:0,yaw:0,name:data.name||"プレイヤー",skinData:data.skin.data,skinName:data.skin.name,skinSlim:!!data.skin.slim}; }
           hostRoomStatus.textContent="相手がワールドに入りました。開始します。";
           const sharedSeed=Math.floor(Math.random()*1000000000);
-          onlineWorldData={worldType:"normal",timeMode:"normal",timeCycle:0,blocks:null,createdOnline:true,seed:sharedSeed,player:{x:0,y:0,z:0,yaw:0,pitch:0}};
+          onlineWorldData={worldType:selectedOnlineWorldType,timeMode:selectedOnlineTimeMode,gameMode:selectedOnlineGameMode,timeCycle:0,blocks:null,createdOnline:true,seed:sharedSeed,player:{x:0,y:0,z:0,yaw:0,pitch:0}};
           onlineWorldData.skinData=TITLE_CURRENT_SKIN_DATA;
           onlineWorldData.skinName=TITLE_CURRENT_SKIN_NAME;
           onlineWorldData.skinSlim=TITLE_CURRENT_SKIN_SLIM;
@@ -5749,7 +5799,7 @@ function createOnlineRoom(){
           if(onlinePeerSkinState) setTimeout(()=>forwardOnlineToGame({type:"playerState",state:onlinePeerSkinState}),250);
         }
       });
-      conn.on("close",()=>{ hostRoomStatus.textContent="相手の接続が切れました。"; });
+      conn.on("close",()=>{ hostRoomStatus.textContent="相手の接続が切れました。"; if(!closingOnlineByUser && gameScreen.style.display!=="none") forceTitleByOnlineDisconnect(); });
     });
     onlinePeer.on("error",err=>{ hostRoomStatus.textContent="部屋エラー: "+(err && err.type ? err.type : "不明"); });
   });
@@ -5788,7 +5838,7 @@ function searchOnlineRoom(){
           }
         }
       });
-      onlineConn.on("close",()=>{ joinRoomStatus.textContent="接続が切れました。"; });
+      onlineConn.on("close",()=>{ joinRoomStatus.textContent="接続が切れました。"; if(!closingOnlineByUser && gameScreen.style.display!=="none") forceTitleByOnlineDisconnect(); });
       onlineConn.on("error",()=>{ joinRoomStatus.textContent="部屋が見つかりません。IDを確認してください。"; });
       setTimeout(()=>{
         if(searchRoomScreen.style.display!=="none" && joinRoomStatus.textContent==="検索中...") joinRoomStatus.textContent="見つからない時は、作った側の画面を開いたままにしてください。";
@@ -5817,7 +5867,7 @@ function launchMultiplayerWorld(worldData,roomId,isHost){
   pendingWorldData.skinSlim=TITLE_CURRENT_SKIN_SLIM;
   hideAllOuterScreens();
   gameScreen.style.display="block";
-  setRoomCorner("部屋ID: "+roomId);
+  setRoomCorner("");
   if(!gameLoaded){
     gameFrame.srcdoc = gameSource.value;
     gameLoaded = true;
